@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Browsing Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      width: 280px;
+      padding: 10px;
+    }
+    h2 {
+      margin-bottom: 8px;
+    }
+    .stat {
+      margin: 6px 0;
+    }
+    button {
+      margin-top: 10px;
+      width: 100%;
+    }
+    .session {
+      border-top: 1px solid #ccc;
+      margin-top: 8px;
+      padding-top: 6px;
+      cursor: pointer;
+    }
+    .details {
+      font-size: 12px;
+      margin-left: 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Browsing Dashboard</h2>
+
+  <div class="stat">Total sessions: <span id="totalSessions"></span></div>
+  <div class="stat">Avg session (min): <span id="avgSession"></span></div>
+  <div class="stat">Longest session (min): <span id="longestSession"></span></div>
+
+  <div class="stat">
+    Top sites:
+    <ul id="topSites"></ul>
+  </div>
+
+  <button id="toggleDetails">View Session Details</button>
+
+  <div id="sessions" style="display:none;"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
