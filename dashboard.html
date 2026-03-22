@@ -2,74 +2,237 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Screen Time Momentum — Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Screen Time Momentum - Dashboard</title>
     <link rel="stylesheet" href="dashboard.css" />
   </head>
   <body>
-    <header class="topbar">
-      <div>
-        <h1>Screen Time Momentum</h1>
-        <div class="sub">Dashboard</div>
-      </div>
-
-      <div class="topActions">
-        <button id="newSessionBtn" class="btn danger">New session</button>
-        <button id="clearBtn" class="btn ghost">Clear data</button>
-      </div>
-    </header>
-
-    <main class="wrap">
-      <section class="grid">
-        <div class="card">
-          <div class="label">Current session</div>
-          <div class="foot">Tip: click “New session” to set an intended duration.</div>
-          <div class="big" id="elapsed">0:00</div>
-          <div class="rowLine">
-            <div><strong>Sites visited:</strong> <span id="sitesCount">0</span></div>
-            <div class="pill" id="idlePill">Active</div>
+    <div class="appShell">
+      <aside class="sidebar">
+        <div class="sidebarBrand">
+          <div class="sidebarMark">S</div>
+          <div>
+            <div class="sidebarTitle">Screen Time</div>
+            <div class="sidebarSubtitle">Momentum</div>
           </div>
-          <div class="muted" id="sitesList">—</div>
         </div>
 
-        <div class="card">
-          <div class="label">Today</div>
-          <div class="kpiGrid">
-            <div class="kpi">
-              <div class="kpiLabel">Total time</div>
-              <div class="kpiValue" id="todayTime">—</div>
+        <nav class="sidebarNav" aria-label="Dashboard sections">
+          <button class="navItem isActive" type="button" data-tab="overview">Overview</button>
+          <button class="navItem" type="button" data-tab="analytics">Analytics</button>
+          <button class="navItem" type="button" data-tab="sessions">Today</button>
+          <button class="navItem" type="button" data-tab="history">History</button>
+          <button class="navItem" type="button" data-tab="reset">Reset</button>
+        </nav>
+      </aside>
+
+      <main class="dashboardShell">
+        <section class="tabPanel isActive" data-tab-panel="overview">
+          <header class="pageHeader">
+            <div>
+              <div class="pageEyebrow">Dashboard</div>
+              <h1>Screen Time Momentum</h1>
+              <p class="pageIntro">A focused view of your browsing time, sessions, and site activity.</p>
             </div>
-            <div class="kpi">
-              <div class="kpiLabel">Sessions</div>
-              <div class="kpiValue" id="todaySessions">—</div>
+            <div class="pageHeaderRight">
+              <button id="refreshBtn" class="btn secondary refreshBtn" type="button">Refresh</button>
+              <article class="statCard headerStatCard">
+                <div class="statLabelRow">
+                  <div class="label">Total time</div>
+                  <div class="statIcon">O</div>
+                </div>
+                <div class="statValue" id="todayTime">-</div>
+              </article>
             </div>
-            <div class="kpi">
-              <div class="kpiLabel">Top site</div>
-              <div class="kpiValue small" id="todayTopSite">—</div>
+          </header>
+
+          <section class="heroGrid">
+            <article class="panelCard currentSessionCard">
+              <div class="panelHeader">
+                <div>
+                  <div class="label">Current session</div>
+                  <div class="panelHint">Click "New Session" to set a goal.</div>
+                </div>
+                <div class="headerActions">
+                  <button id="newSessionBtn" class="btn primary">New Session</button>
+                </div>
+              </div>
+
+              <div class="sessionOverview">
+                <div class="progressWrap" id="sessionProgressChart" aria-label="Current session progress"></div>
+
+                <div class="sessionInfo">
+                  <div class="sessionMetrics">
+                    <div class="sessionMetric">
+                      <strong id="sessionSites">0 sites</strong>
+                      <span>Unique sites</span>
+                    </div>
+                    <div class="sessionMetric">
+                      <strong id="sessionVisits">0 visits</strong>
+                      <span>Page navigations</span>
+                    </div>
+                  </div>
+
+                  <div class="sessionSites" id="sitesList">No session yet.</div>
+                  <div class="sessionGoal" id="sessionGoal">Goal: -</div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panelCard chartCard">
+              <div class="panelHeader">
+                <div>
+                  <div class="label">This week</div>
+                  <div class="panelHint">Daily tracked minutes</div>
+                </div>
+              </div>
+              <div id="weekChart" class="chartMount" aria-label="Weekly activity chart"></div>
+            </article>
+          </section>
+
+          <section class="singlePanelGrid">
+            <article class="panelCard">
+              <div class="panelHeader">
+                <div>
+                  <div class="label">Current session data</div>
+                  <div class="panelHint">Sites and timestamps from the active session</div>
+                </div>
+              </div>
+              <div id="currentSessionData" class="sessionDataGrid">
+                <div class="muted">No session yet.</div>
+              </div>
+            </article>
+          </section>
+        </section>
+
+        <section class="tabPanel" data-tab-panel="analytics" hidden>
+          <section class="singlePanelGrid"></section>
+        </section>
+
+        <section class="tabPanel" data-tab-panel="sessions" hidden>
+          <section class="todayLayout">
+            <article class="panelCard">
+              <div class="panelHeader">
+                <div>
+                  <div class="label">Today's sessions</div>
+                  <div class="panelHint" id="recentSessionsCount">0 sessions today</div>
+                </div>
+              </div>
+              <div id="sessionsList" class="sessionsList">
+                <div class="muted">Loading...</div>
+              </div>
+            </article>
+
+            <div class="todaySidebar">
+              <article class="panelCard">
+                <div class="panelHeader">
+                  <div>
+                    <div class="label">Top sites today</div>
+                    <div class="panelHint">Sorted by tracked time</div>
+                  </div>
+                </div>
+                <div id="topSitesList" class="siteRanking">
+                  <div class="muted">Loading...</div>
+                </div>
+              </article>
+
+              <article class="panelCard chartCard">
+                <div class="panelHeader">
+                  <div>
+                    <div class="label">Today's activity</div>
+                    <div class="panelHint">Minutes tracked by hour</div>
+                  </div>
+                  <div class="chartTotal">
+                    <span class="chartTotalLabel">Total</span>
+                    <strong id="activityTotal">0m</strong>
+                  </div>
+                </div>
+                <div id="activityChart" class="chartMount" aria-label="Today's activity chart"></div>
+              </article>
+
+              <article class="panelCard chartCard">
+                <div class="panelHeader">
+                  <div>
+                    <div class="label">Time distribution</div>
+                    <div class="panelHint">Where today went</div>
+                  </div>
+                </div>
+                <div id="distributionChart" class="distributionCard" aria-label="Time distribution chart"></div>
+              </article>
             </div>
-            <div class="kpi">
-              <div class="kpiLabel">Visits</div>
-              <div class="kpiValue" id="todayVisits">—</div>
-            </div>
+          </section>
+        </section>
+
+        <section class="tabPanel" data-tab-panel="history" hidden>
+          <section class="singlePanelGrid">
+            <article class="panelCard">
+              <div class="panelHeader">
+                <div>
+                  <div class="label">History</div>
+                  <div class="panelHint">Daily summaries from previous days</div>
+                </div>
+              </div>
+              <div id="historyList" class="historyList">
+                <div class="muted">Loading...</div>
+              </div>
+            </article>
+          </section>
+        </section>
+
+        <section class="tabPanel" data-tab-panel="reset" hidden>
+          <section class="singlePanelGrid">
+            <article class="panelCard resetCard">
+              <div class="panelHeader">
+                <div>
+                  <div class="label">Reset data</div>
+                  <div class="panelHint">Delete all tracked visits, sessions, and current progress</div>
+                </div>
+              </div>
+              <div class="resetContent">
+                <p class="resetWarning">
+                  This clears all local tracking data from the extension. This action cannot be undone.
+                </p>
+                <button id="confirmClearBtn" class="btn danger" type="button">Confirm Clear Data</button>
+              </div>
+            </article>
+          </section>
+        </section>
+
+        <footer class="dashboardFooter">
+          Screen Time Momentum dashboard preview with live extension data.
+        </footer>
+      </main>
+    </div>
+
+    <div id="intentModal" class="intentModal" hidden>
+      <div class="intentModalBackdrop"></div>
+      <section class="intentModalCard" role="dialog" aria-modal="true" aria-labelledby="intentModalTitle">
+        <div class="intentModalTop">
+          <div>
+            <div class="label">New session</div>
+            <h2 id="intentModalTitle">Choose intended duration</h2>
+          </div>
+          <button id="closeIntentModalBtn" class="intentModalClose" type="button" aria-label="Close">x</button>
+        </div>
+
+        <div class="intentModalOptions">
+          <button class="intentModalOption" type="button" data-minutes="5">Real quick &lt;5 mins</button>
+          <button class="intentModalOption" type="button" data-minutes="15">15 min</button>
+          <button class="intentModalOption" type="button" data-minutes="30">30 min</button>
+          <button class="intentModalOption" type="button" data-minutes="45">45 min</button>
+          <button class="intentModalOption" type="button" data-minutes="60">1 hr</button>
+          <button class="intentModalOption" type="button" data-no-goal="true">No goal</button>
+        </div>
+
+        <div class="intentModalOther">
+          <div class="label">Other</div>
+          <div class="intentModalOtherRow">
+            <input id="intentModalOtherInput" type="number" min="1" step="1" placeholder="Minutes" />
+            <button id="intentModalOtherSubmit" class="btn primary" type="button">Start</button>
           </div>
         </div>
       </section>
-
-      <section class="grid2">
-        <div class="card">
-          <div class="label">Recent sessions</div>
-          <div id="sessionsList" class="sessionsList">
-            <div class="muted">Loading…</div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="label">Top sites today</div>
-          <div id="topSitesList" class="list">
-            <div class="muted">Loading…</div>
-          </div>
-        </div>
-      </section>
-    </main>
+    </div>
 
     <script src="dashboard.js"></script>
   </body>

@@ -1,399 +1,1159 @@
 :root {
   --bg: #f6f7fb;
-  --card: #ffffff;
-  --border: rgba(17, 17, 17, 0.08);
-  --text: #111;
-  --muted: rgba(17, 17, 17, 0.62);
-  --purple: #6f2dbd;
-  --purple-2: #8c3cf0;
-
-  --shadow-sm: 0 10px 30px rgba(17, 17, 17, 0.06);
-  --shadow-md: 0 14px 45px rgba(17, 17, 17, 0.08);
-  --shadow-hover: 0 18px 60px rgba(17, 17, 17, 0.12);
-
-  --radius-lg: 20px;
-  --radius-md: 16px;
-  --radius-sm: 12px;
-
-  --ring: 0 0 0 4px rgba(111, 45, 189, 0.14);
-
+  --panel: #ffffff;
+  --panel-strong: #ffffff;
+  --border: #e5e7ef;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --purple: #6d28d9;
+  --purple-2: #8b5cf6;
+  --purple-3: #c4b5fd;
+  --purple-4: #ede9fe;
+  --green: #47b881;
+  --shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  --shadow-soft: 0 3px 10px rgba(15, 23, 42, 0.04);
+  --radius-xl: 18px;
+  --radius-lg: 14px;
+  --radius-md: 12px;
   --max: 1120px;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html {
-  overflow-y: auto;
+html,
+body {
   min-height: 100%;
 }
 
 body {
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
   margin: 0;
-  min-height: 100vh;
   color: var(--text);
-
-  /* soft, premium background */
-  background:
-    radial-gradient(900px 500px at 20% -10%, rgba(111, 45, 189, 0.16), transparent 60%),
-    radial-gradient(900px 500px at 90% 0%, rgba(140, 60, 240, 0.14), transparent 55%),
-    radial-gradient(900px 500px at 60% 120%, rgba(111, 45, 189, 0.10), transparent 55%),
-    var(--bg);
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  background: var(--bg);
 }
 
-/* ===== Top bar ===== */
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+.appShell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+}
 
-  color: white;
-  padding: 18px 22px;
+.sidebar {
+  background: linear-gradient(180deg, #ffffff 0%, #f6f5ff 100%);
+  border-right: 1px solid var(--border);
+  padding: 28px 18px;
+  display: grid;
+  align-content: start;
+  gap: 24px;
+}
+
+.sidebarBrand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-
-  /* gradient + subtle glass */
-  background: linear-gradient(135deg, var(--purple), var(--purple-2));
-  box-shadow: 0 12px 35px rgba(111, 45, 189, 0.26);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 4px 8px;
 }
 
-.topbar h1 {
-  margin: 0;
-  font-size: 18px;
-  letter-spacing: -0.2px;
-}
-
-.sub {
-  opacity: 0.92;
-  margin-top: 4px;
-  font-size: 12.5px;
-}
-
-.topActions { display: flex; gap: 10px; }
-
-.btn {
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.14);
+.sidebarMark {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
   color: white;
-  border-radius: 999px;
-  padding: 9px 14px;
   font-weight: 800;
+}
+
+.sidebarTitle {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.sidebarSubtitle {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sidebarNav {
+  display: grid;
+  gap: 8px;
+}
+
+.navItem {
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: #616b82;
+  padding: 12px 14px;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
   cursor: pointer;
-  transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
+  transition: background 0.14s ease, color 0.14s ease, transform 0.14s ease;
 }
 
-.btn:hover {
-  filter: brightness(0.97);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(0,0,0,0.14);
+.navItem:hover {
+  transform: translateX(2px);
+  background: rgba(139, 92, 246, 0.08);
+  color: var(--purple);
 }
 
-.btn:active { transform: translateY(0px); }
-
-.btn:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
+.navItem.isActive {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  color: white;
+  box-shadow: 0 12px 24px rgba(109, 40, 217, 0.18);
 }
 
-.btn.ghost { background: rgba(255, 255, 255, 0.12); }
-
-.btn.danger {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 190, 205, 0.9);
-}
-
-/* ===== Layout ===== */
-.wrap {
+.dashboardShell {
   max-width: var(--max);
-  margin: 22px auto;
-  padding: 0 16px 28px;
+  width: 100%;
+  margin: 0 clamp(72px, 10vw, 220px) 0 auto;
+  padding: 24px 20px 28px;
 }
 
-.grid {
+.pageHeader {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 14px;
-  margin-bottom: 14px;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 20px;
+  padding: 0 2px 4px;
 }
 
-.grid2 {
+.pageHeader > :first-child {
+  min-width: 0;
+}
+
+.pageHeaderRight {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.refreshBtn {
+  padding: 8px 12px;
+}
+
+.headerStatCard {
+  width: 128px;
+  min-height: 112px;
+  flex: 0 0 auto;
+  padding: 14px 14px 16px;
+  align-self: flex-start;
+}
+
+.headerStatCard .statIcon {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+}
+
+.headerStatCard .statValue {
+  margin-top: 4px;
+  font-size: 24px;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.headerStatCard .statSub {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pageEyebrow {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.pageHeader h1 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.pageIntro {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.statsGrid,
+.heroGrid,
+.middleGrid,
+.bottomGrid,
+.todayGrid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 14px;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-@media (max-width: 900px) {
-  .grid, .grid2 { grid-template-columns: 1fr; }
+.statsGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-/* ===== Cards ===== */
-.card {
-  background: rgba(255, 255, 255, 0.86);
+.heroGrid,
+.middleGrid {
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+}
+
+.bottomGrid {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
+  align-items: start;
+}
+
+.todayGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.todayLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.85fr);
+  gap: 16px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+
+.todaySidebar {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.singlePanelGrid {
+  display: grid;
+  gap: 16px;
+}
+
+.tabPanel[hidden] {
+  display: none;
+}
+
+.statCard,
+.panelCard {
+  background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 18px;
-  box-shadow: var(--shadow-md);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
 }
 
-.card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-hover);
-  border-color: rgba(111, 45, 189, 0.18);
+.statCard {
+  padding: 14px 16px;
+  min-height: 126px;
+}
+
+.statCard.headerStatCard {
+  min-height: 0;
+  height: fit-content;
+  padding: 7px 10px 4px;
+}
+
+.panelCard {
+  padding: 20px;
 }
 
 .label {
   color: var(--muted);
-  font-size: 12px;
-  letter-spacing: 0.2px;
   text-transform: uppercase;
-  margin-bottom: 10px;
+  letter-spacing: 0.08em;
+  font-size: 11px;
 }
 
-.big {
-  font-size: 52px;
-  font-weight: 900;
-  letter-spacing: -1.2px;
-  margin: 6px 0 10px;
-  line-height: 1;
-}
-
-.rowLine {
+.statLabelRow,
+.panelHeader,
+.statusRow,
+.sessionMetrics,
+.siteRow,
+.sessionMeta,
+.sessionSitesMeta,
+.legendList {
   display: flex;
   align-items: center;
+}
+
+.statLabelRow,
+.panelHeader,
+.siteRow {
   justify-content: space-between;
+}
+
+.panelHeader {
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.chartTotal {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+}
+
+.chartTotalLabel {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chartTotal strong {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.panelHint,
+.statSub,
+.muted,
+.sessionGoal,
+.siteMeta,
+.legendRow {
+  color: var(--muted);
+}
+
+.statIcon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #f5f3ff;
+  color: var(--purple);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.statValue {
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+
+.statSub {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.headerActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.14s ease, box-shadow 0.14s ease, opacity 0.14s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+
+.btn.primary {
+  color: white;
+  background: var(--purple);
+}
+
+.btn.secondary {
+  color: var(--purple);
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+}
+
+.btn.danger {
+  color: white;
+  background: #dc2626;
+}
+
+.btn.danger:hover {
+  box-shadow: 0 10px 24px rgba(220, 38, 38, 0.18);
+}
+
+.currentSessionCard,
+.chartCard {
+  min-height: 180px;
+}
+
+.heroGrid .panelCard {
+  padding-top: 16px;
+  padding-bottom: 10px;
+}
+
+.heroGrid .chartMount {
+  min-height: 150px;
+}
+
+.todaySidebar .chartCard {
+  min-height: 220px;
+}
+
+.sessionOverview {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+}
+
+.progressWrap {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto;
+}
+
+.sessionInfo {
+  display: grid;
+  gap: 14px;
+}
+
+.statusRow {
   gap: 10px;
 }
 
-.muted {
-  color: var(--muted);
-  margin-top: 10px;
-  line-height: 1.35;
+.statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 5px rgba(71, 184, 129, 0.15);
 }
 
-.foot {
-  color: var(--muted);
-  margin-top: 10px;
-  font-size: 12px;
-}
-
-/* ===== Pills ===== */
 .pill {
-  font-size: 12px;
-  font-weight: 900;
-  padding: 6px 10px;
+  padding: 7px 12px;
   border-radius: 999px;
-  background: rgba(111, 45, 189, 0.12);
-  color: #3b1a75;
-  border: 1px solid rgba(111, 45, 189, 0.18);
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(71, 184, 129, 0.1);
+  color: #2f7f5a;
 }
 
 .pill.idle {
-  background: rgba(255, 73, 114, 0.10);
-  color: #8a0f2a;
-  border-color: rgba(255, 73, 114, 0.18);
+  background: #f5f3ff;
+  color: var(--purple);
 }
 
-/* ===== KPI grid ===== */
-.kpiGrid {
+.sessionMetrics {
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+.sessionMetric {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+
+.sessionMetric strong {
+  font-size: 18px;
+}
+
+.sessionMetric span,
+.siteMeta,
+.sessionMeta,
+.legendRow,
+.dashboardFooter,
+.panelHint,
+.muted {
+  font-size: 13px;
+}
+
+.sessionSites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.siteChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.siteChip:hover {
+  color: var(--purple);
+  border-color: #d8ccfb;
+}
+
+.siteChip img,
+.siteFavicon {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.chartMount {
+  min-height: 210px;
+  position: relative;
+}
+
+.todaySidebar .chartMount {
+  min-height: 150px;
+}
+
+.chartSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.axisLabel,
+.tickLabel {
+  fill: var(--muted);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.gridLine {
+  stroke: #eceff5;
+  stroke-width: 1;
+}
+
+.linePath {
+  fill: none;
+  stroke: var(--purple);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.linePoint {
+  fill: var(--purple);
+  stroke: white;
+  stroke-width: 2;
+  cursor: pointer;
+}
+
+.lineArea {
+  fill: url(#activityFill);
+}
+
+.barRect {
+  fill: url(#weekBarFill);
+}
+
+.distributionSlice {
+  cursor: pointer;
+}
+
+.chartTooltip {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -100%);
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(31, 41, 55, 0.94);
+  color: white;
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
+.distributionCard {
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  align-items: center;
+  min-height: 210px;
+  position: relative;
+}
+
+.todaySidebar .distributionCard {
+  gap: 8px;
+  min-height: 120px;
+}
+
+.todaySidebar .distributionCard .chartSvg {
+  max-width: 180px;
+}
+
+.todaySidebar .distributionCard .legendList {
+  gap: 6px 12px;
+}
+
+.todaySidebar .distributionCard .legendLabel,
+.todaySidebar .distributionCard .legendValue {
+  font-size: 12px;
+}
+
+.legendList {
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  justify-content: center;
+}
+
+.legendRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legendLabel {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.legendValue {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.legendSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sessionsList,
+.siteRanking,
+.historyList {
+  display: grid;
+  gap: 12px;
+}
+
+.sessionRow,
+.siteRow,
+.historyRow {
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-soft);
+}
+
+.sessionRow {
+  display: grid;
   gap: 10px;
 }
 
-.kpi {
-  border: 1px solid rgba(17, 17, 17, 0.07);
-  border-radius: var(--radius-md);
-  padding: 12px 12px;
-  background: rgba(255,255,255,0.7);
-  box-shadow: var(--shadow-sm);
+.sessionToggle {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
 }
 
-.kpiLabel {
-  color: var(--muted);
-  font-size: 12px;
-  margin-bottom: 6px;
+.sessionHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
 }
 
-.kpiValue {
-  font-size: 22px;
-  font-weight: 950;
-  letter-spacing: -0.4px;
+.sessionHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.kpiValue.small {
-  font-size: 14px;
-  font-weight: 900;
+.sessionBadgeSlot,
+.badgeStack {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.sessionTime {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.goalBadge {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #eefaf4;
+  color: #2f7f5a;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.overrunBadge {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(220, 38, 38, 0.1);
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sessionMeta,
+.sessionSitesMeta {
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.sessionChevron {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #f5f3ff;
+  color: var(--purple);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.sessionDetails {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.sessionDetailsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sessionVisitRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sessionVisitMain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sessionVisitDomain {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* ===== Sessions list ===== */
-.sessionsList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.sessionVisitDomain:hover {
+  color: var(--purple);
 }
-
-.sessionRow {
-  border: 1px solid rgba(17, 17, 17, 0.07);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: rgba(255,255,255,0.7);
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
-}
-
-.sessionRow:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 14px 40px rgba(17, 17, 17, 0.09);
-  border-color: rgba(111, 45, 189, 0.16);
-}
-
-.sessionRowBtn {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  background: none;
-  border: none;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.sessionRowBtn:hover {
-  background: rgba(111, 45, 189, 0.06);
-}
-
-.sessionRowTime {
-  font-weight: 950;
-  font-size: 14px;
-}
-
-.sessionRowMeta {
-  font-size: 12px;
-  color: var(--muted);
-  justify-self: end;
-  white-space: nowrap;
-}
-
-.sessionRowChevron {
-  font-size: 10px;
-  color: var(--muted);
-  transition: transform 0.2s ease;
-  justify-self: end;
-}
-
-.sessionDetails {
-  border-top: 1px solid rgba(17, 17, 17, 0.06);
-  background: rgba(255,255,255,0.88);
-}
-
-.sessionDetailsInner {
-  padding: 10px 14px 12px;
-  max-height: 220px;
-  overflow-y: auto;
-  font-size: 13px;
-}
-
-.sessionVisit {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 0;
-  border-bottom: 1px solid rgba(17,17,17,0.06);
-}
-
-.sessionVisit:last-child { border-bottom: none; }
 
 .sessionVisitTime {
   color: var(--muted);
   font-size: 12px;
-  min-width: 4.8em;
+  white-space: nowrap;
 }
 
-.sessionVisitDomain,
-.listTitle {
-  color: var(--text);
-  font-weight: 700;
-  transition: color 0.15s ease;
+.siteRow {
+  gap: 14px;
 }
 
-.sessionVisitDomain:hover,
-.listTitle:hover {
+.siteRank {
+  width: 24px;
   color: var(--purple);
-}
-
-.sessionIntent {
-  font-size: 12px;
-  color: var(--muted);
-  padding: 4px 14px 10px 14px;
-  border-top: 1px solid rgba(0,0,0,0.05);
-  background: rgba(111,45,189,0.04);
-}
-
-.sessionOverrun {
-  color: #b00020;
   font-weight: 700;
-  margin-left: 6px;
+  text-align: center;
 }
 
-/* ===== Top sites list ===== */
-.list { display: flex; flex-direction: column; gap: 10px; }
-
-.listRow {
+.siteMain {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border: 1px solid rgba(17, 17, 17, 0.07);
-  border-radius: var(--radius-md);
-  padding: 11px 12px;
-  background: rgba(255,255,255,0.7);
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+  gap: 12px;
 }
 
-.listRow:hover {
-  transform: translateY(-1px);
-  border-color: rgba(111, 45, 189, 0.16);
-  box-shadow: 0 14px 40px rgba(17, 17, 17, 0.09);
-}
-
-.listTitle { font-weight: 950; font-size: 13px; }
-.listMeta { color: var(--muted); font-size: 12px; margin-top: 3px; }
-.listRight { font-weight: 950; font-size: 13px; white-space: nowrap; }
-
-.favicon {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-}
-
-.sessionVisit {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.sessionVisitDomain,
-.sessionVisitDomain:visited {
+.siteName {
   color: var(--text);
   text-decoration: none;
   font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.sessionVisitDomain:hover {
+.siteName:hover {
   color: var(--purple);
-  text-decoration: underline;
+}
+
+.siteTime {
+  font-weight: 700;
+}
+
+.historyRow {
+  display: grid;
+  gap: 12px;
+}
+
+.historyToggle {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.historyRowMain {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+}
+
+.historyDay {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.historyDate {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.historyTopSite {
+  color: var(--muted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historyStats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 18px;
+}
+
+.historyStat {
+  display: grid;
+  gap: 2px;
+  min-width: 72px;
+  text-align: right;
+}
+
+.historyStat strong {
+  font-size: 16px;
+}
+
+.historyStat span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.historyDetails {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.historyDetailsList {
+  display: grid;
+  gap: 12px;
+}
+
+.historySessionCard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: #fbfbfe;
+  display: grid;
+  gap: 10px;
+}
+
+.historySessionToggle {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+}
+
+.historySessionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.historySessionHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.historySessionDetails {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.sessionDataGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.resetCard {
+  max-width: 560px;
+}
+
+.resetContent {
+  display: grid;
+  gap: 18px;
+  align-items: start;
+}
+
+.resetWarning {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.progressValue {
+  font-size: 24px;
+  font-weight: 800;
+  fill: var(--text);
+  text-anchor: middle;
+}
+
+.progressGoal {
+  font-size: 13px;
+  fill: var(--muted);
+  text-anchor: middle;
+}
+
+.dashboardFooter {
+  text-align: center;
+  padding-top: 6px;
+}
+
+.intentModal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.intentModal[hidden] {
+  display: none;
+}
+
+.intentModalBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 24, 39, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.intentModalCard {
+  position: relative;
+  z-index: 1;
+  width: min(640px, calc(100vw - 40px));
+  padding: 18px 18px 20px;
+  border-radius: 22px;
+  border: 1px solid rgba(125, 52, 216, 0.08);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+}
+
+.intentModalTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.intentModalTop h2 {
+  margin: 6px 0 0;
+  font-size: 26px;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.intentModalClose {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.intentModalOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.intentModalOption {
+  min-height: 54px;
+  padding: 12px 14px;
+  border: 1px solid #e7e2f9;
+  border-radius: 16px;
+  background: #fbfaff;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.intentModalOption:hover,
+.intentModalClose:hover {
+  border-color: #d8ccfb;
+  color: var(--purple);
+}
+
+.intentModalOther {
+  margin-top: 14px;
+}
+
+.intentModalOtherRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.intentModalOtherRow input {
+  min-width: 0;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font: inherit;
+}
+
+@media (max-width: 1180px) {
+  .appShell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    gap: 18px;
+    padding-bottom: 18px;
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .heroGrid,
+  .middleGrid,
+  .bottomGrid,
+  .todayGrid,
+  .todayLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboardShell {
+    padding: 16px 10px 24px;
+  }
+
+  .pageHeader h1 {
+    font-size: 28px;
+  }
+
+  .appShell,
+  .sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .pageHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .pageHeaderRight {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .headerStatCard {
+    width: 100%;
+  }
+
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .panelCard,
+  .statCard {
+    border-radius: 20px;
+  }
+
+  .panelHeader,
+  .sessionHeader,
+  .historyRowMain,
+  .historySessionHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .sessionVisitRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .sessionOverview {
+    grid-template-columns: 1fr;
+  }
+
+  .progressWrap {
+    width: 150px;
+    height: 150px;
+  }
+
+  .historyStats {
+    justify-content: flex-start;
+    gap: 14px;
+  }
+
+  .historyStat {
+    text-align: left;
+  }
+
+  .intentModalOptions,
+  .intentModalOtherRow {
+    grid-template-columns: 1fr;
+  }
+
 }

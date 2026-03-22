@@ -1,10 +1,16 @@
 html, body.popup-min {
   width: 320px;
-  height: 320px;
+  min-height: 300px;
   margin: 0;
   padding: 10px;
-  overflow: hidden;
+  overflow: auto;
   font-family: system-ui, -apple-system, Arial;
+}
+
+body.popup-min.chooserOnly {
+  width: 340px;
+  min-height: 0;
+  padding: 14px;
 }
 
 * { box-sizing: border-box; }
@@ -18,25 +24,13 @@ h1 {
 
 .card {
   max-width: 360px;
-  margin: 0 auto 10px;
+  margin: 0 auto 12px;
 }
 
-.big {
-  font-size: 35px;
-  font-weight: 900;
-  letter-spacing: -0.8px;
-  margin-bottom: 8px;
-}
-
-.meta { font-size: 12.5px; }
-
-.tiny {
-  font-size: 12px;
-  color: #666;
-  margin-top: 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.popupProgressWrap {
+  width: 176px;
+  height: 176px;
+  margin: 8px auto 4px;
 }
 
 .row {
@@ -72,4 +66,77 @@ button:hover { background: #f3f3f3; }
 
 button.danger {
   border-color: #ffb3c1;
+}
+
+.chooserCard {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid #e2e2e2;
+  border-radius: 14px;
+  background: #fafafa;
+}
+
+body.popup-min.chooserOnly .popupSummary,
+body.popup-min.chooserOnly .popupActions {
+  display: none;
+}
+
+.chooserTitle {
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.chooserOptions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.intentOption,
+.otherIntentBtn {
+  flex: initial;
+}
+
+.chooserOtherRow {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.otherIntentInputWrap {
+  display: flex;
+  gap: 8px;
+}
+
+.otherIntentInputWrap input[type="number"] {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #d9d9d9;
+  font-size: 12px;
+}
+
+.otherIntentInputWrap button {
+  flex: 0 0 auto;
+  padding-inline: 12px;
+}
+
+.popupProgressSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.popupProgressValue {
+  font-size: 24px;
+  font-weight: 800;
+  fill: #1f2937;
+  text-anchor: middle;
+}
+
+.popupProgressGoal {
+  font-size: 13px;
+  fill: #6b7280;
+  text-anchor: middle;
 }

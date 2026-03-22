@@ -1,0 +1,124 @@
+.intentPage {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f7f4ff 0%, #fdfcff 100%);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1b1f2f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.intentShell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.intentCard {
+  width: min(560px, 100%);
+  padding: 28px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(125, 52, 216, 0.08);
+  box-shadow: 0 24px 80px rgba(86, 46, 146, 0.12);
+}
+
+.intentEyebrow {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7d34d8;
+}
+
+.intentCard h1 {
+  margin: 0;
+  font-size: clamp(32px, 5vw, 44px);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.intentHint {
+  margin: 12px 0 24px;
+  font-size: 18px;
+  color: #5f6373;
+}
+
+.intentOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.intentOption,
+#applyOtherIntent {
+  border: 1px solid rgba(125, 52, 216, 0.16);
+  border-radius: 18px;
+  background: #fff;
+  color: #1b1f2f;
+  cursor: pointer;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  min-height: 74px;
+  padding: 18px 20px;
+}
+
+.intentOption:hover,
+#applyOtherIntent:hover {
+  border-color: rgba(125, 52, 216, 0.34);
+  box-shadow: 0 10px 30px rgba(125, 52, 216, 0.12);
+}
+
+.intentOther {
+  margin-top: 18px;
+}
+
+.intentOtherLabel {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #5f6373;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.intentOtherRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+}
+
+#otherIntentInput {
+  width: 100%;
+  min-height: 64px;
+  padding: 0 18px;
+  border: 1px solid rgba(125, 52, 216, 0.16);
+  border-radius: 18px;
+  background: #fff;
+  font-size: 22px;
+}
+
+#applyOtherIntent {
+  min-width: 108px;
+}
+
+@media (max-width: 640px) {
+  .intentCard {
+    padding: 22px;
+    border-radius: 22px;
+  }
+
+  .intentOptions {
+    grid-template-columns: 1fr;
+  }
+
+  .intentOtherRow {
+    grid-template-columns: 1fr;
+  }
+}

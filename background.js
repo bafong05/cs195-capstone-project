@@ -1,25 +1,72 @@
-const INACTIVITY_THRESHOLD_MS = 15 * 60 * 1000;
+const INACTIVITY_THRESHOLD_MS = 30 * 60 * 1000;
+// const INACTIVITY_THRESHOLD_MS = 10 * 1000;
+
+let lastUserActivity = Date.now();
+let videoPlaying = false;
+let lastPromptedAutoSessionId = null;
+let lastActivityHeartbeatAt = 0;
+
+async function getLastUserActivity() {
+  const { lastUserActivityAt } = await chrome.storage.local.get(["lastUserActivityAt"]);
+  const stored = Number(lastUserActivityAt);
+  return Number.isFinite(stored) && stored > 0 ? stored : lastUserActivity;
+}
+
+async function setLastUserActivity(ts) {
+  lastUserActivity = ts;
+  await chrome.storage.local.set({ lastUserActivityAt: ts });
+}
 
 function shouldIgnoreUrl(url) {
   if (!url) return true;
 
   try {
-    const u = new URL(url);
-    const ignoredProtocols = ["chrome:", "chrome-extension:", "about:", "edge:", "brave:"];
-    if (ignoredProtocols.includes(u.protocol)) return true;
-
-    const ignoredHosts = ["newtab", "extensions"];
-    if (ignoredHosts.includes(u.hostname)) return true;
-
+    new URL(url);
     return false;
   } catch {
     return true;
   }
 }
 
+function shouldIgnoreExtensionPage(url) {
+  if (!url) return false;
+
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "chrome-extension:" &&
+      (
+        parsed.pathname.endsWith("/dashboard.html") ||
+        parsed.pathname.endsWith("/popup.html") ||
+        parsed.pathname.endsWith("/intent.html")
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
 function toDomain(url) {
   try {
-    return new URL(url).hostname.replace(/^www\./, "");
+    const parsed = new URL(url);
+
+    if (
+      (parsed.protocol === "chrome:" && parsed.pathname === "//newtab/") ||
+      (parsed.protocol === "chrome-search:" && parsed.pathname.includes("local-ntp"))
+    ) {
+      return "new-tab-page";
+    }
+
+    const host = parsed.hostname.replace(/^www\./, "");
+    if (host) return host;
+
+    if (parsed.protocol === "file:") {
+      const parts = decodeURIComponent(parsed.pathname).split("/").filter(Boolean);
+      return parts[parts.length - 1] || "local file";
+    }
+
+    const path = parsed.pathname.replace(/^\/+|\/+$/g, "");
+    return `${parsed.protocol}//${path || "page"}`;
   } catch {
     return "unknown";
   }
@@ -32,7 +79,7 @@ function computeSessionMetrics(visits) {
   const end = visits[visits.length - 1].time;
   const durationMs = Math.max(0, end - start);
 
-  const domains = visits.map((v) => v.domain);
+  const domains = visits.map((v) => v.domain || toDomain(v.url));
   const uniqueDomains = Array.from(new Set(domains));
 
   const timePerDomain = {};
@@ -41,7 +88,8 @@ function computeSessionMetrics(visits) {
     const next = visits[i + 1];
     const dtRaw = next ? Math.max(0, next.time - curr.time) : 0;
     const dt = Math.min(dtRaw, INACTIVITY_THRESHOLD_MS);
-    timePerDomain[curr.domain] = (timePerDomain[curr.domain] || 0) + dt;
+    const key = curr.domain || toDomain(curr.url);
+    timePerDomain[key] = (timePerDomain[key] || 0) + dt;
   }
 
   return {
@@ -145,10 +193,46 @@ async function rebuildSessions() {
   return sessionsWithMetrics;
 }
 
+async function promptForAutoSessionIntent(sessionId) {
+  if (!sessionId || lastPromptedAutoSessionId === sessionId) return;
+
+  lastPromptedAutoSessionId = sessionId;
+
+  try {
+    await chrome.windows.create({
+      url: chrome.runtime.getURL("popup.html?intent=auto"),
+      type: "popup",
+      width: 360,
+      height: 520,
+      focused: true
+    });
+  } catch {}
+}
+
+async function heartbeatActiveSession(ts) {
+  if (ts - lastActivityHeartbeatAt < 15000) return;
+  lastActivityHeartbeatAt = ts;
+
+  const { activeSession } = await chrome.storage.local.get(["activeSession"]);
+  if (!activeSession) return;
+
+  if ((activeSession.lastEventTime || 0) >= ts) return;
+
+  await chrome.storage.local.set({
+    activeSession: {
+      ...activeSession,
+      lastEventTime: ts
+    }
+  });
+}
+
 async function logVisit(url, source) {
   if (shouldIgnoreUrl(url)) return;
+  if (shouldIgnoreExtensionPage(url)) return;
 
   const now = Date.now();
+  const persistedLastUserActivity = await getLastUserActivity();
+  const wasInactive = now - persistedLastUserActivity > INACTIVITY_THRESHOLD_MS;
   const visit = {
     url,
     domain: toDomain(url),
@@ -159,8 +243,10 @@ async function logVisit(url, source) {
   const data = await chrome.storage.local.get(["visits", "activeSession"]);
   const visits = data.visits || [];
   let active = data.activeSession || null;
+  let startedAutoSession = false;
+  const effectiveLastActivity = Math.max(persistedLastUserActivity, active?.lastEventTime || 0);
 
-  if (!active || (active.lastEventTime && now - active.lastEventTime > INACTIVITY_THRESHOLD_MS)) {
+  if (!active || (effectiveLastActivity && now - effectiveLastActivity > INACTIVITY_THRESHOLD_MS)) {
     active = {
       id: `${now}`,
       startTime: now,
@@ -168,6 +254,13 @@ async function logVisit(url, source) {
       uniqueDomains: [],
       visitCount: 0
     };
+    startedAutoSession = true;
+  }
+
+  // The first tracked event after inactivity should resume activity state so
+  // subsequent tab switches do not keep spawning new auto sessions.
+  if (wasInactive || startedAutoSession) {
+    await setLastUserActivity(now);
   }
 
   active.lastEventTime = now;
@@ -187,6 +280,10 @@ async function logVisit(url, source) {
   });
 
   await rebuildSessions();
+
+  if (startedAutoSession) {
+    await promptForAutoSessionIntent(active.id);
+  }
 }
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
@@ -204,17 +301,11 @@ chrome.webNavigation.onCommitted.addListener(async (details) => {
 
   let source = "navigation";
 
-  if (details.transitionType === "typed") {
-    source = "direct-url-entry";
-  } else if (details.transitionType === "link") {
-    source = "link-navigation";
-  } else if (details.transitionType === "reload") {
-    source = "page-reload";
-  } else if (details.transitionType === "auto_bookmark") {
-    source = "bookmark-navigation";
-  } else if (details.transitionType === "generated") {
-    source = "address-bar-search";
-  }
+  if (details.transitionType === "typed") source = "direct-url-entry";
+  else if (details.transitionType === "link") source = "link-navigation";
+  else if (details.transitionType === "reload") source = "page-reload";
+  else if (details.transitionType === "auto_bookmark") source = "bookmark-navigation";
+  else if (details.transitionType === "generated") source = "address-bar-search";
 
   await logVisit(details.url, source);
 });
@@ -234,22 +325,35 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const { visits, sessions, activeSession, sessionIntents } =
+  const { visits, sessions, activeSession, sessionIntents, lastUserActivityAt } =
     await chrome.storage.local.get([
       "visits",
       "sessions",
       "activeSession",
-      "sessionIntents"
+      "sessionIntents",
+      "lastUserActivityAt"
     ]);
 
   if (!visits) await chrome.storage.local.set({ visits: [] });
   if (!sessions) await chrome.storage.local.set({ sessions: [] });
   if (!activeSession) await chrome.storage.local.set({ activeSession: null });
   if (!sessionIntents) await chrome.storage.local.set({ sessionIntents: [] });
+  if (!lastUserActivityAt) await chrome.storage.local.set({ lastUserActivityAt: Date.now() });
 });
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg && msg.type === "rebuildSessions") {
+
+  if (msg.type === "userActivity") {
+    const ts = Date.now();
+    setLastUserActivity(ts).catch(() => {});
+    heartbeatActiveSession(ts).catch(() => {});
+  }
+
+  if (msg.type === "videoStatus") {
+    videoPlaying = msg.playing;
+  }
+
+  if (msg.type === "rebuildSessions") {
     rebuildSessions()
       .then(() => sendResponse({ ok: true }))
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
@@ -257,5 +361,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  return undefined;
 });
+
+setInterval(async () => {
+
+  const now = Date.now();
+  const data = await chrome.storage.local.get(["activeSession"]);
+  const active = data.activeSession;
+
+  if (!active) return;
+
+  const persistedLastUserActivity = await getLastUserActivity();
+  const effectiveLastActivity = Math.max(persistedLastUserActivity, active.lastEventTime || 0);
+  const inactive = now - effectiveLastActivity > INACTIVITY_THRESHOLD_MS;
+
+  if (inactive && !videoPlaying) {
+    await chrome.storage.local.set({
+      activeSession: null
+    });
+  }
+
+}, 10000);
