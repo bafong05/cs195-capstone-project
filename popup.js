@@ -1,6 +1,24 @@
 let chooserMode = null;
 const launchMode = new URLSearchParams(window.location.search).get("intent");
-const INACTIVITY_THRESHOLD_MS = 30 * 60 * 1000;
+const DEFAULT_INACTIVITY_THRESHOLD_MINUTES = 10;
+let inactivityThresholdMs = DEFAULT_INACTIVITY_THRESHOLD_MINUTES * 60 * 1000;
+const { normalizeSessionName, saveIntentToActiveSession, startManualSession } = window.ScreenTimeSessionHelpers;
+
+function currentSessionName() {
+  return normalizeSessionName(document.getElementById("sessionNameInput")?.value || "");
+}
+
+function normalizeInactivityThresholdMinutes(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes)) return DEFAULT_INACTIVITY_THRESHOLD_MINUTES;
+  return Math.min(120, Math.max(1, Math.round(minutes)));
+}
+
+async function loadInactivityThreshold() {
+  const { inactivityThresholdMinutes } = await chrome.storage.local.get(["inactivityThresholdMinutes"]);
+  inactivityThresholdMs =
+    normalizeInactivityThresholdMinutes(inactivityThresholdMinutes) * 60 * 1000;
+}
 
 if (launchMode === "manual" || launchMode === "auto") {
   document.body.classList.add("chooserOnly");
@@ -53,12 +71,16 @@ function showChooser(mode) {
   const title = document.getElementById("chooserTitle");
   const otherWrap = document.getElementById("otherIntentInputWrap");
   const otherInput = document.getElementById("otherIntentInput");
+  const sessionNameInput = document.getElementById("sessionNameInput");
 
   title.textContent =
-    mode === "manual" ? "Choose intended duration for new session" : "Set intended duration";
+    mode === "manual"
+      ? "Choose intended duration for new session"
+      : "Your session has expired. A new one is now starting.";
   chooser.hidden = false;
   otherWrap.hidden = true;
   otherInput.value = "";
+  if (sessionNameInput) sessionNameInput.value = "";
 }
 
 function hideChooser() {
@@ -66,68 +88,18 @@ function hideChooser() {
   document.getElementById("intentChooser").hidden = true;
   document.getElementById("otherIntentInputWrap").hidden = true;
   document.getElementById("otherIntentInput").value = "";
-}
-
-async function saveIntentToActiveSession(minutes) {
-  const { activeSession, sessionIntents = [] } = await chrome.storage.local.get([
-    "activeSession",
-    "sessionIntents"
-  ]);
-
-  if (!activeSession) return;
-
-  const intents = Array.isArray(sessionIntents) ? sessionIntents.slice() : [];
-  const filtered = intents.filter((intent) => intent.sessionId !== activeSession.id);
-
-  await chrome.storage.local.set({
-    activeSession: {
-      ...activeSession,
-      intendedMinutes: minutes
-    },
-    sessionIntents: minutes == null ? filtered : [...filtered, { sessionId: activeSession.id, intendedMinutes: minutes }]
-  });
-
-  chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
-}
-
-async function startManualSession(minutes) {
-  const now = Date.now();
-  const newSession = {
-    id: `${now}`,
-    startTime: now,
-    lastEventTime: now,
-    uniqueDomains: [],
-    visitCount: 0,
-    intendedMinutes: minutes
-  };
-
-  const { manualSessionStarts = [], sessionIntents = [] } = await chrome.storage.local.get([
-    "manualSessionStarts",
-    "sessionIntents"
-  ]);
-
-  const updatedStarts = Array.isArray(manualSessionStarts) ? manualSessionStarts.slice() : [];
-  updatedStarts.push(now);
-
-  const intents = Array.isArray(sessionIntents) ? sessionIntents.slice() : [];
-  const filtered = intents.filter((intent) => intent.sessionId !== newSession.id);
-
-  await chrome.storage.local.set({
-    activeSession: newSession,
-    manualSessionStarts: updatedStarts,
-    sessionIntents: minutes == null ? filtered : [...filtered, { sessionId: newSession.id, intendedMinutes: minutes }]
-  });
-
-  chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
+  const sessionNameInput = document.getElementById("sessionNameInput");
+  if (sessionNameInput) sessionNameInput.value = "";
 }
 
 async function submitIntent(minutes) {
   if (minutes != null && (!Number.isFinite(minutes) || minutes <= 0)) return;
+  const sessionName = currentSessionName();
 
   if (chooserMode === "manual") {
-    await startManualSession(minutes);
+    await startManualSession(minutes, sessionName);
   } else {
-    await saveIntentToActiveSession(minutes);
+    await saveIntentToActiveSession(minutes, sessionName);
   }
 
   hideChooser();
@@ -136,6 +108,7 @@ async function submitIntent(minutes) {
 }
 
 async function refresh() {
+  await loadInactivityThreshold();
   const { activeSession } = await chrome.storage.local.get(["activeSession"]);
   const progressChart = document.getElementById("popupProgressChart");
 
@@ -146,10 +119,7 @@ async function refresh() {
   }
 
   const now = Date.now();
-  const idleMs = now - (activeSession.lastEventTime || activeSession.startTime);
-  const effectiveEndTime = idleMs > INACTIVITY_THRESHOLD_MS
-    ? (activeSession.lastEventTime || activeSession.startTime)
-    : now;
+  const effectiveEndTime = now;
   const elapsedMs = Math.max(0, effectiveEndTime - activeSession.startTime);
   const goalMinutes = activeSession.intendedMinutes;
   const ringBasisMinutes = goalMinutes || 30;
@@ -202,6 +172,6 @@ if (launchMode === "manual" || launchMode === "auto") {
 }
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  if (changes.activeSession) refresh();
+  if (changes.activeSession || changes.inactivityThresholdMinutes) refresh();
 });
 setInterval(refresh, 1000);

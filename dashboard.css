@@ -15,7 +15,6 @@
   --radius-xl: 18px;
   --radius-lg: 14px;
   --radius-md: 12px;
-  --max: 1120px;
 }
 
 * {
@@ -109,10 +108,10 @@ body {
 }
 
 .dashboardShell {
-  max-width: var(--max);
+  max-width: none;
   width: 100%;
-  margin: 0 clamp(72px, 10vw, 220px) 0 auto;
-  padding: 24px 20px 28px;
+  margin: 0;
+  padding: 24px 28px 28px;
 }
 
 .pageHeader {
@@ -189,33 +188,14 @@ body {
   font-size: 14px;
 }
 
-.statsGrid,
-.heroGrid,
-.middleGrid,
-.bottomGrid,
-.todayGrid {
+.heroGrid {
   display: grid;
   gap: 16px;
   margin-bottom: 16px;
 }
 
-.statsGrid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.heroGrid,
-.middleGrid {
+.heroGrid {
   grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-}
-
-.bottomGrid {
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
-  align-items: start;
-}
-
-.todayGrid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: start;
 }
 
 .todayLayout {
@@ -235,6 +215,12 @@ body {
 .singlePanelGrid {
   display: grid;
   gap: 16px;
+}
+
+.analyticsInsightsGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr;
 }
 
 .tabPanel[hidden] {
@@ -273,11 +259,9 @@ body {
 
 .statLabelRow,
 .panelHeader,
-.statusRow,
 .sessionMetrics,
 .siteRow,
 .sessionMeta,
-.sessionSitesMeta,
 .legendList {
   display: flex;
   align-items: center;
@@ -292,6 +276,27 @@ body {
 .panelHeader {
   gap: 16px;
   margin-bottom: 18px;
+}
+
+.analyticsToggle {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.analyticsToggle .panelHint {
+  display: block;
+}
+
+.analyticsSectionBody[hidden] {
+  display: none;
+}
+
+.analyticsChevron {
+  flex: 0 0 auto;
 }
 
 .chartTotal {
@@ -383,22 +388,28 @@ body {
   background: #dc2626;
 }
 
+.btn.secondaryDanger {
+  background: #ef4444;
+}
+
 .btn.danger:hover {
   box-shadow: 0 10px 24px rgba(220, 38, 38, 0.18);
 }
 
 .currentSessionCard,
 .chartCard {
-  min-height: 180px;
+  min-height: 320px;
 }
 
 .heroGrid .panelCard {
   padding-top: 16px;
   padding-bottom: 10px;
+  height: 320px;
+  overflow: hidden;
 }
 
 .heroGrid .chartMount {
-  min-height: 150px;
+  min-height: 240px;
 }
 
 .todaySidebar .chartCard {
@@ -409,7 +420,8 @@ body {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
   gap: 20px;
-  align-items: center;
+  align-items: stretch;
+  min-height: 238px;
 }
 
 .progressWrap {
@@ -420,33 +432,9 @@ body {
 
 .sessionInfo {
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 14px;
-}
-
-.statusRow {
-  gap: 10px;
-}
-
-.statusDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--green);
-  box-shadow: 0 0 0 5px rgba(71, 184, 129, 0.15);
-}
-
-.pill {
-  padding: 7px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  background: rgba(71, 184, 129, 0.1);
-  color: #2f7f5a;
-}
-
-.pill.idle {
-  background: #f5f3ff;
-  color: var(--purple);
+  min-height: 0;
 }
 
 .sessionMetrics {
@@ -477,6 +465,16 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-content: flex-start;
+  max-height: 132px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.sessionMetaStack {
+  display: grid;
+  gap: 0;
+  align-content: start;
 }
 
 .siteChip {
@@ -490,11 +488,21 @@ body {
   font-size: 12px;
   color: var(--text);
   text-decoration: none;
+  max-width: min(100%, 320px);
+  min-width: 0;
 }
 
 .siteChip:hover {
   color: var(--purple);
   border-color: #d8ccfb;
+}
+
+.siteChipLabel {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .siteChip img,
@@ -659,6 +667,8 @@ body {
   background: transparent;
   text-align: left;
   cursor: pointer;
+  flex: 1;
+  min-width: 0;
 }
 
 .sessionHeader {
@@ -672,6 +682,41 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-left: auto;
+}
+
+.sessionRowActions {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+.sessionActionRail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.sessionExpandBtn {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #f5f3ff;
+  color: var(--purple);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.sessionExpandBtn:hover {
+  background: #eee7ff;
 }
 
 .sessionBadgeSlot,
@@ -686,6 +731,84 @@ body {
 .sessionTime {
   font-size: 16px;
   font-weight: 800;
+}
+
+.sessionName {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sessionNameEditable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.14s ease;
+}
+
+.sessionNameEditable:hover {
+  color: var(--purple);
+}
+
+.sessionNameEditable::after {
+  content: "Edit";
+  opacity: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--purple);
+  transition: opacity 0.14s ease;
+}
+
+.sessionNameEditable:hover::after {
+  opacity: 1;
+}
+
+.currentSessionName {
+  margin-top: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.2;
+}
+
+.sessionInfo .sessionGoal {
+  line-height: 1.2;
+}
+
+.sessionDeleteBtn {
+  border: 1px solid rgba(220, 38, 38, 0.16);
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  border-radius: 999px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.sessionDeleteBtn:hover {
+  background: rgba(220, 38, 38, 0.12);
+  border-color: rgba(220, 38, 38, 0.28);
+  transform: translateY(-1px);
+}
+
+.sessionDeleteBtn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .goalBadge {
@@ -708,22 +831,15 @@ body {
   white-space: nowrap;
 }
 
-.sessionMeta,
-.sessionSitesMeta {
+.sessionMeta {
   gap: 14px;
   flex-wrap: wrap;
 }
 
 .sessionChevron {
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: #f5f3ff;
-  color: var(--purple);
   font-size: 16px;
   line-height: 1;
+  font-weight: 700;
 }
 
 .sessionDetails {
@@ -742,6 +858,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  min-width: 0;
 }
 
 .sessionVisitMain {
@@ -749,12 +866,19 @@ body {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  flex: 1;
+  max-width: min(100%, 640px);
+  overflow: hidden;
 }
 
 .sessionVisitDomain {
   color: var(--text);
   text-decoration: none;
   font-weight: 600;
+  display: block;
+  flex: 1;
+  min-width: 0;
+  max-width: 72ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -806,9 +930,234 @@ body {
   font-weight: 700;
 }
 
+.analyticsAssistantCard {
+  overflow: hidden;
+  width: min(100%, 1040px);
+  margin: 0 auto;
+}
+
+.assistantAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: #f5f3ff;
+  color: var(--purple);
+}
+
+.assistantPlaceholder {
+  display: grid;
+  gap: 16px;
+  padding: 2px 0 2px;
+  min-height: 320px;
+  align-content: space-between;
+  width: min(100%, 920px);
+  margin: 0 auto;
+}
+
+.assistantThread {
+  display: grid;
+  gap: 12px;
+}
+
+.assistantMessage {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.assistantMessageBot {
+  justify-content: flex-start;
+}
+
+.assistantMessageUser {
+  justify-content: flex-end;
+}
+
+.assistantBubble {
+  padding: 14px 16px;
+  border-radius: 20px;
+  line-height: 1.55;
+  box-shadow: var(--shadow-soft);
+}
+
+.assistantBubble.bot {
+  background: #fafaff;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  width: min(100%, 680px);
+}
+
+.assistantBubble.user {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  color: white;
+  font-size: 12px;
+  width: fit-content;
+  max-width: min(100%, 420px);
+}
+
+.assistantComposer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: white;
+  box-shadow: var(--shadow-soft);
+}
+
+.assistantComposerText {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.assistantComposerBtn[disabled] {
+  opacity: 1;
+  cursor: default;
+}
+
+.sequenceRow {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.sequenceMain {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.sequencePath {
+  font-weight: 700;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.sequenceArrow {
+  color: var(--purple);
+  font-weight: 800;
+}
+
+.sequenceLoopLabel {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 4px;
+  text-transform: lowercase;
+}
+
+.sequenceMeta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.timeOfDayCard {
+  display: grid;
+  gap: 18px;
+}
+
+.timeOfDayMetrics {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.timeOfDayMetric {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+.timeOfDayMetric span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.timeOfDayMetric strong {
+  font-size: 16px;
+  line-height: 1.35;
+  letter-spacing: 0;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeOfDayMetric small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sequenceStat {
+  min-width: 84px;
+  text-align: right;
+  display: grid;
+  gap: 2px;
+}
+
 .historyRow {
   display: grid;
   gap: 12px;
+}
+
+.historyToolbar {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.historySearchScope,
+.historySearchInput {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.historySearchScope {
+  appearance: none;
+  cursor: pointer;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%),
+    #fff;
+  background-position:
+    calc(100% - 18px) 19px,
+    calc(100% - 12px) 19px,
+    0 0;
+  background-size: 6px 6px, 6px 6px, 100% 100%;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+}
+
+.historySearchInput::placeholder {
+  color: var(--muted);
+}
+
+.historySearchScope:focus,
+.historySearchInput:focus {
+  outline: none;
+  border-color: #d8ccfb;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.08);
 }
 
 .historyToggle {
@@ -922,21 +1271,168 @@ body {
   gap: 10px;
 }
 
+.settingsCard,
 .resetCard {
-  max-width: 560px;
+  width: 100%;
+  max-width: none;
 }
 
+.resetCard {
+  border-radius: 16px;
+  background: #fbfbfe;
+  box-shadow: var(--shadow-soft);
+  padding: 14px 16px;
+}
+
+.resetCard .panelHeader {
+  margin-bottom: 0;
+}
+
+.dataToolsCard {
+  width: 100%;
+  max-width: none;
+}
+
+.tabPanel[data-tab-panel="settings"] .singlePanelGrid {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 760px;
+}
+
+.settingsContent,
 .resetContent {
   display: grid;
   gap: 18px;
   align-items: start;
 }
 
-.resetWarning {
+.settingsSection {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fbfbfe;
+  padding: 14px 16px;
+}
+
+.settingsToggle {
+  margin-bottom: 0;
+  align-items: flex-start;
+}
+
+.settingsToggle .settingsHelp {
+  margin-top: 4px;
+}
+
+.settingsSectionBody {
+  padding-top: 12px;
+}
+
+.settingsBlock {
+  display: grid;
+  gap: 12px;
+}
+
+.settingsLabel {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.settingsHelp,
+.resetWarning,
+.settingsStatus {
   margin: 0;
   color: var(--muted);
   font-size: 14px;
   line-height: 1.6;
+}
+
+.settingsControlRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settingsControlRow input {
+  width: 100px;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font: inherit;
+}
+
+.settingsControlRow select {
+  min-width: 170px;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: white;
+  font: inherit;
+  color: var(--text);
+}
+
+.settingsSuffix {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.settingsQuickOptions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settingsQuickOptions .btn {
+  padding: 8px 14px;
+}
+
+.notificationPreferences {
+  display: grid;
+  gap: 10px;
+}
+
+.notificationPreference {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fbfbfe;
+}
+
+.notificationPreference input {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--purple);
+}
+
+.notificationPreference span {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.notificationPreference strong {
+  font-size: 14px;
+}
+
+.notificationPreference small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.notificationTestBtn {
+  margin-left: auto;
+  padding: 7px 12px;
+  flex: 0 0 auto;
+}
+
+.resetWarning {
+  margin: 0;
 }
 
 .progressValue {
@@ -1058,6 +1554,21 @@ body {
   font: inherit;
 }
 
+.historySessionName {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.historySessionHeaderRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+}
+
+
 @media (max-width: 1180px) {
   .appShell {
     grid-template-columns: 1fr;
@@ -1070,16 +1581,22 @@ body {
     padding-bottom: 18px;
   }
 
-  .statsGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .heroGrid,
-  .middleGrid,
-  .bottomGrid,
-  .todayGrid,
   .todayLayout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 980px) {
+  .analyticsInsightsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@media (min-width: 1280px) {
+  .analyticsInsightsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -1110,13 +1627,18 @@ body {
     width: 100%;
   }
 
-  .statsGrid {
-    grid-template-columns: 1fr;
-  }
-
   .panelCard,
   .statCard {
     border-radius: 20px;
+  }
+
+  .historyToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .heroGrid .panelCard {
+    height: auto;
+    min-height: 0;
   }
 
   .panelHeader,
@@ -1145,6 +1667,25 @@ body {
   .historyStats {
     justify-content: flex-start;
     gap: 14px;
+  }
+
+  .assistantComposer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .assistantMessage {
+    gap: 10px;
+  }
+
+  .assistantMessageUser {
+    justify-content: stretch;
+  }
+
+  .assistantBubble.bot,
+  .assistantBubble.user {
+    max-width: 100%;
+    width: 100%;
   }
 
   .historyStat {

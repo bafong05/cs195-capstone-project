@@ -22,7 +22,7 @@
           <button class="navItem" type="button" data-tab="analytics">Analytics</button>
           <button class="navItem" type="button" data-tab="sessions">Today</button>
           <button class="navItem" type="button" data-tab="history">History</button>
-          <button class="navItem" type="button" data-tab="reset">Reset</button>
+          <button class="navItem" type="button" data-tab="settings">Settings</button>
         </nav>
       </aside>
 
@@ -74,7 +74,16 @@
                   </div>
 
                   <div class="sessionSites" id="sitesList">No session yet.</div>
-                  <div class="sessionGoal" id="sessionGoal">Goal: -</div>
+                  <div class="sessionMetaStack">
+                    <div
+                      class="sessionGoal sessionNameEditable currentSessionName"
+                      id="currentSessionName"
+                      data-session-id=""
+                      data-session-start=""
+                      data-session-name=""
+                    >Unnamed session</div>
+                    <div class="sessionGoal" id="sessionGoal">Goal: -</div>
+                  </div>
                 </div>
               </div>
             </article>
@@ -92,13 +101,14 @@
 
           <section class="singlePanelGrid">
             <article class="panelCard">
-              <div class="panelHeader">
+              <button type="button" class="panelHeader analyticsToggle" data-analytics-toggle aria-expanded="false">
                 <div>
                   <div class="label">Current session data</div>
                   <div class="panelHint">Sites and timestamps from the active session</div>
                 </div>
-              </div>
-              <div id="currentSessionData" class="sessionDataGrid">
+                <span class="sessionChevron analyticsChevron">+</span>
+              </button>
+              <div id="currentSessionData" class="sessionDataGrid analyticsSectionBody" hidden>
                 <div class="muted">No session yet.</div>
               </div>
             </article>
@@ -106,7 +116,82 @@
         </section>
 
         <section class="tabPanel" data-tab-panel="analytics" hidden>
-          <section class="singlePanelGrid"></section>
+          <section class="singlePanelGrid">
+            <article class="panelCard analyticsAssistantCard">
+              <div class="panelHeader">
+                <div>
+                  <div class="label">AI assistant</div>
+                  <div class="panelHint">Ask questions about your browsing patterns in plain language</div>
+                </div>
+              </div>
+              <div class="assistantPlaceholder">
+                <div class="assistantThread">
+                  <div class="assistantMessage assistantMessageBot">
+                    <div class="assistantAvatar">AI</div>
+                    <div class="assistantBubble bot">
+                      Hi! I'm your AI Screentime Assistant. I’ll help you understand your browsing habits,
+                      spot patterns, and turn raw activity into useful insights.
+                      <br /><br />
+                      Try asking:
+                      <br />• How much time have I spent today?
+                      <br />• What sites do I switch between the most?
+                      <br />• Give me productivity insights from my sessions
+                    </div>
+                  </div>
+                  <div class="assistantMessage assistantMessageUser">
+                    <div class="assistantBubble user">
+                      What sites do I bounce between the most?
+                    </div>
+                  </div>
+                </div>
+                <div class="assistantComposer" aria-disabled="true">
+                  <span class="assistantComposerText">Ask about your browsing patterns...</span>
+                  <button class="btn primary assistantComposerBtn" type="button" disabled>Coming Soon</button>
+                </div>
+              </div>
+            </article>
+
+            <div class="analyticsInsightsGrid">
+              <article class="panelCard">
+                <button type="button" class="panelHeader analyticsToggle" data-analytics-toggle aria-expanded="false">
+                  <div>
+                    <div class="label">Workflow patterns</div>
+                    <div class="panelHint">Top 3 most common browsing sequences across recorded sessions</div>
+                  </div>
+                  <span class="sessionChevron analyticsChevron">+</span>
+                </button>
+                <div id="sequenceInsights" class="siteRanking analyticsSectionBody" hidden>
+                  <div class="muted">Loading...</div>
+                </div>
+              </article>
+
+              <article class="panelCard">
+                <button type="button" class="panelHeader analyticsToggle" data-analytics-toggle aria-expanded="false">
+                  <div>
+                    <div class="label">Extended-session sites</div>
+                    <div class="panelHint">Top 3 sites most often involved in sessions that exceeded their intended duration</div>
+                  </div>
+                  <span class="sessionChevron analyticsChevron">+</span>
+                </button>
+                <div id="extendedSessionInsights" class="siteRanking analyticsSectionBody" hidden>
+                  <div class="muted">Loading...</div>
+                </div>
+              </article>
+
+              <article class="panelCard">
+                <button type="button" class="panelHeader analyticsToggle" data-analytics-toggle aria-expanded="false">
+                  <div>
+                    <div class="label">Time-of-day trends</div>
+                    <div class="panelHint">Per-hour session-start metrics grouped by when each session began</div>
+                  </div>
+                  <span class="sessionChevron analyticsChevron">+</span>
+                </button>
+                <div id="timeOfDayInsights" class="timeOfDayCard analyticsSectionBody" hidden>
+                  <div class="muted">Loading...</div>
+                </div>
+              </article>
+            </div>
+          </section>
         </section>
 
         <section class="tabPanel" data-tab-panel="sessions" hidden>
@@ -172,6 +257,21 @@
                   <div class="panelHint">Daily summaries from previous days</div>
                 </div>
               </div>
+              <div class="historyToolbar">
+                <select id="historySearchScope" class="historySearchScope" aria-label="History search scope">
+                  <option value="all">All</option>
+                  <option value="session">Session name</option>
+                  <option value="site">Site</option>
+                  <option value="date">Date</option>
+                </select>
+                <input
+                  id="historySearchInput"
+                  class="historySearchInput"
+                  type="text"
+                  placeholder="Search history"
+                  maxlength="120"
+                />
+              </div>
               <div id="historyList" class="historyList">
                 <div class="muted">Loading...</div>
               </div>
@@ -179,28 +279,129 @@
           </section>
         </section>
 
-        <section class="tabPanel" data-tab-panel="reset" hidden>
+        <section class="tabPanel" data-tab-panel="settings" hidden>
           <section class="singlePanelGrid">
-            <article class="panelCard resetCard">
+            <article class="panelCard settingsCard">
               <div class="panelHeader">
                 <div>
-                  <div class="label">Reset data</div>
-                  <div class="panelHint">Delete all tracked visits, sessions, and current progress</div>
+                  <div class="label">Settings</div>
+                  <div class="panelHint">Manage session behavior and reminders</div>
                 </div>
               </div>
-              <div class="resetContent">
-                <p class="resetWarning">
-                  This clears all local tracking data from the extension. This action cannot be undone.
-                </p>
-                <button id="confirmClearBtn" class="btn danger" type="button">Confirm Clear Data</button>
+              <div class="settingsContent">
+                <section class="settingsSection">
+                  <button type="button" class="panelHeader analyticsToggle settingsToggle" data-analytics-toggle aria-expanded="false">
+                    <div>
+                      <div class="settingsLabel">Inactivity threshold</div>
+                      <p class="settingsHelp">
+                        Control when inactivity ends the current session.
+                      </p>
+                    </div>
+                    <span class="analyticsChevron">+</span>
+                  </button>
+                  <div class="analyticsSectionBody settingsSectionBody" hidden>
+                    <div class="settingsBlock">
+                      <p class="settingsHelp">
+                        If you are inactive for this many minutes, a new session will start the next time activity is tracked.
+                      </p>
+                      <div class="settingsControlRow">
+                        <input id="thresholdInput" type="number" min="1" max="120" step="1" />
+                        <span class="settingsSuffix">minutes</span>
+                        <button id="saveThresholdBtn" class="btn primary" type="button">Save</button>
+                      </div>
+                      <div class="settingsQuickOptions" id="thresholdQuickOptions">
+                        <button class="thresholdPresetBtn btn secondary" type="button" data-minutes="5">5 min</button>
+                        <button class="thresholdPresetBtn btn secondary" type="button" data-minutes="10">10 min</button>
+                        <button class="thresholdPresetBtn btn secondary" type="button" data-minutes="15">15 min</button>
+                        <button class="thresholdPresetBtn btn secondary" type="button" data-minutes="30">30 min</button>
+                      </div>
+                      <div id="thresholdStatus" class="settingsStatus" aria-live="polite"></div>
+                    </div>
+                  </div>
+                </section>
+                <section class="settingsSection">
+                  <button type="button" class="panelHeader analyticsToggle settingsToggle" data-analytics-toggle aria-expanded="false">
+                    <div>
+                      <div class="settingsLabel">Notification preferences</div>
+                      <p class="settingsHelp">
+                        Choose which session reminders you want to receive.
+                      </p>
+                    </div>
+                    <span class="analyticsChevron">+</span>
+                  </button>
+                  <div class="analyticsSectionBody settingsSectionBody" hidden>
+                    <div class="settingsBlock">
+                      <div class="notificationPreferences">
+                        <label class="notificationPreference">
+                          <input id="notifyEndingSoon" type="checkbox" />
+                          <span>
+                            <strong>Session ending soon</strong>
+                            <small>About 2 minutes before your intended duration ends.</small>
+                          </span>
+                          <button class="btn secondary notificationTestBtn" type="button" data-notification-test="endingSoon">Test</button>
+                        </label>
+                        <label class="notificationPreference">
+                          <input id="notifyOverrun" type="checkbox" />
+                          <span>
+                            <strong>Over intended duration</strong>
+                            <small>When you go over your intended browsing duration.</small>
+                          </span>
+                          <button class="btn secondary notificationTestBtn" type="button" data-notification-test="overrun">Test</button>
+                        </label>
+                        <label class="notificationPreference">
+                          <input id="notifyMissingGoal" type="checkbox" />
+                          <span>
+                            <strong>No goal selected</strong>
+                            <small>About 10 seconds after a session starts without a chosen duration.</small>
+                          </span>
+                          <button class="btn secondary notificationTestBtn" type="button" data-notification-test="missingGoal">Test</button>
+                        </label>
+                        <label class="notificationPreference">
+                          <input id="notifySessionEnded" type="checkbox" />
+                          <span>
+                            <strong>Session ended</strong>
+                            <small>When inactivity ends your current session.</small>
+                          </span>
+                          <button class="btn secondary notificationTestBtn" type="button" data-notification-test="sessionEnded">Test</button>
+                        </label>
+                      </div>
+                      <div id="notificationPreferencesStatus" class="settingsStatus" aria-live="polite"></div>
+                    </div>
+                  </div>
+                </section>
+                <section class="settingsSection">
+                  <button type="button" class="panelHeader analyticsToggle settingsToggle" data-analytics-toggle aria-expanded="false">
+                    <div>
+                      <div class="settingsLabel">Clear data</div>
+                      <p class="settingsHelp">
+                        Remove only the data you want to discard.
+                      </p>
+                    </div>
+                    <span class="analyticsChevron">+</span>
+                  </button>
+                  <div class="analyticsSectionBody settingsSectionBody" hidden>
+                    <div class="settingsBlock">
+                      <div class="settingsLabel">Clear data</div>
+                      <p class="resetWarning">
+                        Choose how much dashboard history to remove. Analytics insights keep their long-term dataset.
+                      </p>
+                      <div class="settingsControlRow">
+                        <select id="clearDataScope">
+                          <option value="current">Current session</option>
+                          <option value="today">Today's data</option>
+                          <option value="all">All data</option>
+                        </select>
+                        <button id="clearDataBtn" class="btn danger" type="button">Clear Data</button>
+                      </div>
+                    </div>
+                    <div id="clearDataStatus" class="settingsStatus" aria-live="polite"></div>
+                  </div>
+                </section>
               </div>
             </article>
           </section>
         </section>
 
-        <footer class="dashboardFooter">
-          Screen Time Momentum dashboard preview with live extension data.
-        </footer>
       </main>
     </div>
 
@@ -225,6 +426,13 @@
         </div>
 
         <div class="intentModalOther">
+          <div class="label">Session name</div>
+          <div class="intentModalOtherRow">
+            <input id="intentModalSessionName" type="text" maxlength="80" placeholder="What are you planning to do?" />
+          </div>
+        </div>
+
+        <div class="intentModalOther">
           <div class="label">Other</div>
           <div class="intentModalOtherRow">
             <input id="intentModalOtherInput" type="number" min="1" step="1" placeholder="Minutes" />
@@ -234,6 +442,7 @@
       </section>
     </div>
 
+    <script src="session_helpers.js"></script>
     <script src="dashboard.js"></script>
   </body>
 </html>

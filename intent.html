@@ -23,6 +23,13 @@
         </div>
 
         <div class="intentOther">
+          <label class="intentOtherLabel" for="sessionNameInput">Session name</label>
+          <div class="intentOtherRow">
+            <input id="sessionNameInput" type="text" maxlength="80" placeholder="What are you planning to do?" />
+          </div>
+        </div>
+
+        <div class="intentOther">
           <label class="intentOtherLabel" for="otherIntentInput">Other</label>
           <div class="intentOtherRow">
             <input id="otherIntentInput" type="number" min="1" step="1" placeholder="Minutes" />
@@ -31,7 +38,7 @@
         </div>
       </section>
     </main>
-
+    <script src="session_helpers.js"></script>
     <script src="intent.js"></script>
   </body>
 </html>

@@ -1,41 +1,63 @@
-function reportActivity() {
-  chrome.runtime.sendMessage({
-    type: "userActivity"
-  });
+const ACTIVITY_REPORT_INTERVAL_MS = 250;
+let lastReportedActivityAt = 0;
+let lastPointerX = null;
+let lastPointerY = null;
+
+function persistActivity(now, source) {
+  try {
+    chrome.storage.local.set({ lastUserActivityAt: now }, () => {});
+  } catch {}
+
+  try {
+    chrome.runtime.sendMessage({
+      type: "userActivity",
+      ts: now,
+      source
+    }, () => {});
+  } catch {}
 }
 
-["mousemove","scroll","keydown","click"].forEach(event => {
-  document.addEventListener(event, reportActivity, { passive:true });
+function reportActivity(source) {
+  const now = Date.now();
+  if (now - lastReportedActivityAt < ACTIVITY_REPORT_INTERVAL_MS) return;
+  lastReportedActivityAt = now;
+  persistActivity(now, source);
+}
+
+function handlePointerMove(event) {
+  const nextX = Number(event.clientX);
+  const nextY = Number(event.clientY);
+  const moved = nextX !== lastPointerX || nextY !== lastPointerY;
+  lastPointerX = nextX;
+  lastPointerY = nextY;
+  if (moved) {
+    reportActivity("cursor");
+  }
+}
+
+[
+  "pointermove",
+  "mousemove"
+].forEach((eventName) => {
+  window.addEventListener(eventName, handlePointerMove, { capture: true, passive: true });
+  document.addEventListener(eventName, handlePointerMove, { capture: true, passive: true });
 });
 
-function detectVideo() {
+[
+  "pointerdown",
+  "click",
+  "keydown",
+  "input",
+  "scroll",
+  "wheel"
+].forEach((eventName) => {
+  window.addEventListener(eventName, () => reportActivity(eventName), { capture: true, passive: true });
+  document.addEventListener(eventName, () => reportActivity(eventName), { capture: true, passive: true });
+});
 
-  const videos = document.querySelectorAll("video");
-
-  for (const v of videos) {
-
-    const rect = v.getBoundingClientRect();
-    const area = rect.width * rect.height;
-
-    if (
-      !v.paused &&
-      !v.ended &&
-      v.currentTime > 0 &&
-      area > 200000 &&
-      document.visibilityState === "visible"
-    ) {
-      chrome.runtime.sendMessage({
-        type:"videoStatus",
-        playing:true
-      });
-      return;
-    }
+window.addEventListener("focus", () => reportActivity("focus"), { passive: true });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    reportActivity("visibilitychange");
   }
-
-  chrome.runtime.sendMessage({
-    type:"videoStatus",
-    playing:false
-  });
-}
-
-setInterval(detectVideo, 5000);
+});

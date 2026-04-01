@@ -1,4 +1,9 @@
 const mode = new URLSearchParams(window.location.search).get("mode") || "manual";
+const { normalizeSessionName, saveIntentToActiveSession, startManualSession } = window.ScreenTimeSessionHelpers;
+
+function currentSessionName() {
+  return normalizeSessionName(document.getElementById("sessionNameInput")?.value || "");
+}
 
 function applyCopy() {
   const eyebrow = document.getElementById("intentEyebrow");
@@ -17,61 +22,6 @@ function applyCopy() {
   hint.textContent = "Select a goal to start this session.";
 }
 
-async function saveIntentToActiveSession(minutes) {
-  const { activeSession, sessionIntents = [] } = await chrome.storage.local.get([
-    "activeSession",
-    "sessionIntents"
-  ]);
-
-  if (!activeSession) return false;
-
-  const intents = Array.isArray(sessionIntents) ? sessionIntents.slice() : [];
-  const filtered = intents.filter((intent) => intent.sessionId !== activeSession.id);
-
-  await chrome.storage.local.set({
-    activeSession: {
-      ...activeSession,
-      intendedMinutes: minutes
-    },
-    sessionIntents: minutes == null ? filtered : [...filtered, { sessionId: activeSession.id, intendedMinutes: minutes }]
-  });
-
-  chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
-  return true;
-}
-
-async function startManualSession(minutes) {
-  const now = Date.now();
-  const newSession = {
-    id: `${now}`,
-    startTime: now,
-    lastEventTime: now,
-    uniqueDomains: [],
-    visitCount: 0,
-    intendedMinutes: minutes
-  };
-
-  const { manualSessionStarts = [], sessionIntents = [] } = await chrome.storage.local.get([
-    "manualSessionStarts",
-    "sessionIntents"
-  ]);
-
-  const updatedStarts = Array.isArray(manualSessionStarts) ? manualSessionStarts.slice() : [];
-  updatedStarts.push(now);
-
-  const intents = Array.isArray(sessionIntents) ? sessionIntents.slice() : [];
-  const filtered = intents.filter((intent) => intent.sessionId !== newSession.id);
-
-  await chrome.storage.local.set({
-    activeSession: newSession,
-    manualSessionStarts: updatedStarts,
-    sessionIntents: minutes == null ? filtered : [...filtered, { sessionId: newSession.id, intendedMinutes: minutes }]
-  });
-
-  chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
-  return true;
-}
-
 async function closeSelf() {
   const currentTab = await chrome.tabs.getCurrent();
   if (currentTab?.id) {
@@ -84,11 +34,12 @@ async function closeSelf() {
 
 async function submitIntent(minutes) {
   if (minutes != null && (!Number.isFinite(minutes) || minutes <= 0)) return;
+  const sessionName = currentSessionName();
 
   if (mode === "auto") {
-    await saveIntentToActiveSession(minutes);
+    await saveIntentToActiveSession(minutes, sessionName);
   } else {
-    await startManualSession(minutes);
+    await startManualSession(minutes, sessionName);
   }
 
   await closeSelf();

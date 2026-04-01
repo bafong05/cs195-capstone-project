@@ -104,6 +104,14 @@ body.popup-min.chooserOnly .popupActions {
   gap: 8px;
 }
 
+#sessionNameInput {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #d9d9d9;
+  font-size: 12px;
+}
+
 .otherIntentInputWrap {
   display: flex;
   gap: 8px;

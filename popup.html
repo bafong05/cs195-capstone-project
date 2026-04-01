@@ -29,6 +29,9 @@
         <button class="intentOption" type="button" data-no-goal="true">No goal</button>
       </div>
       <div class="chooserOtherRow">
+        <input id="sessionNameInput" type="text" maxlength="80" placeholder="Session name (optional)" />
+      </div>
+      <div class="chooserOtherRow">
         <button id="otherIntentBtn" type="button" class="otherIntentBtn">Other</button>
         <div id="otherIntentInputWrap" class="otherIntentInputWrap" hidden>
           <input id="otherIntentInput" type="number" min="1" step="1" placeholder="Minutes" />
@@ -36,7 +39,7 @@
         </div>
       </div>
     </div>
-
+    <script src="session_helpers.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

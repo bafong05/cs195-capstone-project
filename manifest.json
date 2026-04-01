@@ -6,7 +6,10 @@
   "permissions": [
     "tabs",
     "storage",
-    "webNavigation"
+    "webNavigation",
+    "notifications",
+    "alarms",
+    "idle"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -18,7 +21,10 @@
     {
       "matches": ["<all_urls>"],
       "js": ["activity.js"],
-      "run_at": "document_idle"
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true,
+      "match_origin_as_fallback": true
     }
   ],
   "action": {
