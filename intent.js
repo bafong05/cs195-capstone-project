@@ -9,6 +9,39 @@ let intentSubmitted = false;
 let dismissingAutoPrompt = false;
 let autoDismissTimer = null;
 let autoPromptDismissNotified = false;
+let selectedReflection = "";
+let selectedOverrunAction = "";
+let selectedExtensionMinutes = 0;
+
+async function safeRuntimeMessage(message) {
+  try {
+    return await chrome.runtime.sendMessage(message);
+  } catch (error) {
+    const text = String(error?.message || error || "");
+    if (text.includes("No SW") || text.includes("Receiving end does not exist")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function safeRuntimeSignal(message) {
+  try {
+    chrome.runtime.sendMessage(message, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch {}
+}
+
+if (document.body) {
+  document.body.classList.toggle("is-overrun", mode === "overrun");
+}
+
+function getReflectionValue() {
+  if (selectedReflection !== "Other") return selectedReflection;
+  const otherValue = String(document.getElementById("overrunOtherReasonInput")?.value || "").trim();
+  return otherValue;
+}
 
 function showIntentError(message) {
   const shell = document.querySelector(".intentShell");
@@ -27,16 +60,75 @@ function currentSessionName() {
   return normalizeSessionName(document.getElementById("sessionNameInput")?.value || "");
 }
 
-function applyCopy() {
+function setInlineError(message) {
+  const node = document.getElementById("intentInlineError");
+  if (!node) return;
+  node.hidden = !message;
+  node.textContent = message || "";
+}
+
+function updateOverrunStepState() {
+  const reflectionOptions = document.getElementById("reflectionOptions");
+  const otherReasonWrap = document.getElementById("overrunOtherReason");
+  const submitButton = document.getElementById("applyOverrunDecisionButton");
+  const reflectionLabel = document.getElementById("reflectionLabel");
+  const hasAction = Boolean(selectedOverrunAction);
+
+  reflectionOptions?.classList.toggle("is-disabled", !hasAction);
+  if (otherReasonWrap) {
+    otherReasonWrap.classList.toggle("is-disabled", !hasAction);
+  }
+  if (reflectionLabel) {
+    reflectionLabel.textContent = hasAction
+      ? "Why are you extending or ending?"
+      : "Choose an action first";
+  }
+  if (submitButton) {
+    submitButton.disabled = !hasAction;
+  }
+}
+
+function toggleOtherReasonVisibility() {
+  const otherWrap = document.getElementById("overrunOtherReason");
+  const otherInput = document.getElementById("overrunOtherReasonInput");
+  if (!otherWrap) return;
+  otherWrap.hidden = selectedReflection !== "Other";
+  if (selectedReflection !== "Other" && otherInput) {
+    otherInput.value = "";
+  }
+}
+
+function applyCopy(overrunState = null) {
   const eyebrow = document.getElementById("intentEyebrow");
   const title = document.getElementById("intentTitle");
   const hint = document.getElementById("intentHint");
+  const sessionNameSection = document.getElementById("sessionNameSection");
+  const optionsSection = document.getElementById("intentOptions");
+  const otherSection = document.getElementById("otherIntentSection");
+  const overrunSection = document.getElementById("overrunSection");
 
   eyebrow.hidden = false;
   hint.hidden = false;
+
+  if (mode === "overrun") {
+    eyebrow.textContent = "Time limit reached";
+    title.textContent = "Do you want to keep going intentionally?";
+    hint.textContent = "Your session has passed its planned limit. Choose the next step before continuing.";
+
+    sessionNameSection.hidden = true;
+    optionsSection.hidden = true;
+    otherSection.hidden = true;
+    overrunSection.hidden = false;
+    return;
+  }
+
   eyebrow.textContent = "New Session";
   hint.textContent = "A new session started after inactivity. Select a goal to continue.";
   title.textContent = "Choose intended duration for new session";
+  sessionNameSection.hidden = false;
+  optionsSection.hidden = false;
+  otherSection.hidden = false;
+  overrunSection.hidden = true;
 }
 
 async function closeSelf() {
@@ -88,12 +180,67 @@ async function submitIntent(minutes) {
   await closeAllIntentWindows();
 }
 
+async function submitOverrunDecision(action, extensionMinutes = 0) {
+  const reflection = getReflectionValue();
+  if (!selectedReflection) {
+    setInlineError("Choose a quick reflection first.");
+    return;
+  }
+  if (selectedReflection === "Other" && !reflection) {
+    setInlineError("Add a short reason for \"Other.\"");
+    return;
+  }
+
+  intentSubmitted = true;
+  setInlineError("");
+
+  const response = await safeRuntimeMessage({
+    type: "applyOverrunDecision",
+    action,
+    extensionMinutes,
+    reflection
+  });
+
+  if (!response?.ok) {
+    intentSubmitted = false;
+    setInlineError(response?.error || "Could not update the session. Reload the extension and try again.");
+    return;
+  }
+
+  await closeAllIntentWindows();
+}
+
+function selectOverrunAction(action, extensionMinutes = 0) {
+  selectedOverrunAction = String(action || "").trim();
+  selectedExtensionMinutes = Number(extensionMinutes || 0);
+  setInlineError("");
+  document.querySelectorAll(".overrunAction").forEach((button) => {
+    const buttonAction = String(button.dataset.overrunAction || "");
+    const buttonMinutes = Number(button.dataset.extensionMinutes || 0);
+    const isSelected =
+      buttonAction === selectedOverrunAction &&
+      (selectedOverrunAction !== "extend" || buttonMinutes === selectedExtensionMinutes);
+    button.classList.toggle("is-selected", isSelected);
+  });
+  updateOverrunStepState();
+}
+
+async function submitOtherExtensionMinutes() {
+  const input = document.getElementById("overrunOtherMinutesInput");
+  const value = Number(String(input?.value || "").trim());
+  if (!Number.isFinite(value) || value <= 0) {
+    setInlineError("Enter how many minutes you want to add.");
+    return;
+  }
+  selectOverrunAction("extend", value);
+}
+
 async function dismissAutoPromptWithoutSelection() {
   if (mode !== "auto" || intentSubmitted || dismissingAutoPrompt) return;
   dismissingAutoPrompt = true;
 
   try {
-    await chrome.runtime.sendMessage({ type: "dismissPendingAutoResumePrompt" });
+    await safeRuntimeMessage({ type: "dismissPendingAutoResumePrompt" });
     autoPromptDismissNotified = true;
   } catch {}
 
@@ -120,9 +267,12 @@ function cancelAutoDismiss() {
 function notifyAutoPromptDismissed() {
   if (mode !== "auto" || intentSubmitted || autoPromptDismissNotified) return;
   autoPromptDismissNotified = true;
-  try {
-    chrome.runtime.sendMessage({ type: "dismissPendingAutoResumePrompt" });
-  } catch {}
+  safeRuntimeSignal({ type: "dismissPendingAutoResumePrompt" });
+}
+
+function notifyOverrunPromptDismissed() {
+  if (mode !== "overrun" || intentSubmitted) return;
+  safeRuntimeSignal({ type: "dismissOverrunPrompt" });
 }
 
 function bindIntentEvents() {
@@ -143,6 +293,58 @@ function bindIntentEvents() {
       submitIntent(value);
     }
   });
+
+  document.querySelectorAll(".reflectionOption").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!selectedOverrunAction) {
+        setInlineError("Choose how you want to continue first.");
+        return;
+      }
+      selectedReflection = String(button.dataset.reflection || "");
+      setInlineError("");
+      const otherInput = document.getElementById("overrunOtherReasonInput");
+      toggleOtherReasonVisibility();
+      if (selectedReflection === "Other" && otherInput) {
+        window.setTimeout(() => otherInput.focus(), 0);
+      }
+      document.querySelectorAll(".reflectionOption").forEach((node) => {
+        node.classList.toggle("is-selected", node === button);
+      });
+    });
+  });
+
+  document.getElementById("overrunOtherReasonInput")?.addEventListener("input", () => {
+    if (selectedReflection === "Other") {
+      setInlineError("");
+    }
+  });
+
+  document.getElementById("applyOverrunOtherMinutes")?.addEventListener("click", () => {
+    submitOtherExtensionMinutes();
+  });
+
+  document.getElementById("overrunOtherMinutesInput")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitOtherExtensionMinutes();
+    }
+  });
+
+  document.querySelectorAll(".overrunAction").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = String(button.dataset.overrunAction || "");
+      const extensionMinutes = Number(button.dataset.extensionMinutes || 0);
+      selectOverrunAction(action, extensionMinutes);
+    });
+  });
+
+  document.getElementById("applyOverrunDecisionButton")?.addEventListener("click", () => {
+    if (!selectedOverrunAction) {
+      setInlineError("Choose how you want to continue first.");
+      return;
+    }
+    submitOverrunDecision(selectedOverrunAction, selectedExtensionMinutes);
+  });
 }
 
 async function initIntentPage() {
@@ -151,7 +353,20 @@ async function initIntentPage() {
     return;
   }
 
-  applyCopy();
+  let overrunState = null;
+  if (mode === "overrun") {
+    try {
+      overrunState = await safeRuntimeMessage({ type: "getOverrunPromptState" });
+    } catch {}
+    if (!overrunState?.ok) {
+      showIntentError(overrunState?.error || "There is no active overrun session to review.");
+      return;
+    }
+  }
+
+  applyCopy(overrunState);
+  toggleOtherReasonVisibility();
+  updateOverrunStepState();
   bindIntentEvents();
 
   if (mode === "auto") {
@@ -159,6 +374,9 @@ async function initIntentPage() {
     window.addEventListener("focus", cancelAutoDismiss);
     window.addEventListener("pagehide", notifyAutoPromptDismissed);
     window.addEventListener("beforeunload", notifyAutoPromptDismissed);
+  } else if (mode === "overrun") {
+    window.addEventListener("pagehide", notifyOverrunPromptDismissed);
+    window.addEventListener("beforeunload", notifyOverrunPromptDismissed);
   }
 }
 

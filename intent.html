@@ -13,13 +13,13 @@
         <h1 id="intentTitle">Choose intended duration for new session</h1>
         <p class="intentHint" id="intentHint">A new session started after inactivity. Select a goal to continue.</p>
 
-        <div class="intentOther">
+        <div class="intentOther" id="sessionNameSection">
           <div class="intentOtherRow">
             <input id="sessionNameInput" type="text" maxlength="80" placeholder="Session name (optional)" />
           </div>
         </div>
 
-        <div class="intentOptions">
+        <div class="intentOptions" id="intentOptions">
           <button class="intentOption" type="button" data-minutes="5">Real quick &lt;5 min</button>
           <button class="intentOption" type="button" data-minutes="15">15 min</button>
           <button class="intentOption" type="button" data-minutes="30">30 min</button>
@@ -28,13 +28,52 @@
           <button class="intentOption" type="button" data-no-goal="true">No goal</button>
         </div>
 
-        <div class="intentOther">
+        <div class="intentOther" id="otherIntentSection">
           <div class="intentOtherTitle">Other</div>
           <div class="intentOtherRow">
             <input id="otherIntentInput" type="number" min="1" step="1" placeholder="Minutes" />
             <button id="applyOtherIntent" type="button">Set</button>
           </div>
         </div>
+
+        <section class="overrunSection" id="overrunSection" hidden>
+          <div class="overrunGroup">
+            <div class="overrunLabel">How do you want to continue?</div>
+            <div class="overrunActions">
+              <button class="overrunAction" type="button" data-overrun-action="extend" data-extension-minutes="5">Extend 5 min</button>
+              <button class="overrunAction" type="button" data-overrun-action="extend" data-extension-minutes="15">Extend 15 min</button>
+              <button class="overrunAction" type="button" data-overrun-action="no-goal">No goal for now</button>
+              <button class="overrunAction overrunAction--danger" type="button" data-overrun-action="end">End session</button>
+            </div>
+            <div class="overrunOtherReason overrunOtherReason--extend">
+              <div class="overrunLabel overrunLabel--subtle">Other extension</div>
+              <div class="intentOtherRow">
+                <input id="overrunOtherMinutesInput" type="number" min="1" step="1" placeholder="Minutes to add" />
+                <button id="applyOverrunOtherMinutes" type="button">Add</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="overrunGroup">
+            <div class="overrunLabel" id="reflectionLabel">Why are you extending or ending?</div>
+            <div class="reflectionOptions" id="reflectionOptions">
+              <button class="reflectionOption" type="button" data-reflection="Still working">Still working</button>
+              <button class="reflectionOption" type="button" data-reflection="Took longer than expected">Took longer than expected</button>
+              <button class="reflectionOption" type="button" data-reflection="Got distracted">Got distracted</button>
+              <button class="reflectionOption" type="button" data-reflection="Done for now">Done for now</button>
+              <button class="reflectionOption" type="button" data-reflection="Other">Other</button>
+            </div>
+            <div class="overrunOtherReason" id="overrunOtherReason" hidden>
+              <div class="overrunLabel overrunLabel--subtle">Other reason</div>
+              <input id="overrunOtherReasonInput" type="text" maxlength="120" placeholder="Add a short reason" />
+            </div>
+          </div>
+
+          <p class="intentError" id="intentInlineError" hidden></p>
+          <div class="overrunSubmitRow">
+            <button class="overrunSubmitButton" id="applyOverrunDecisionButton" type="button">Continue</button>
+          </div>
+        </section>
       </section>
     </main>
     <script src="session_helpers.js"></script>

@@ -8,7 +8,8 @@ cd "$PROJECT_DIR"
 BACKEND_VENV_DIR="${BACKEND_VENV_DIR:-/tmp/screen-time-momentum-ai-venv}"
 BACKEND_APP_DIR="${BACKEND_APP_DIR:-/tmp/screen-time-momentum-ai-app}"
 
-if [[ ! -d "$BACKEND_VENV_DIR" ]]; then
+if [[ ! -f "$BACKEND_VENV_DIR/bin/activate" ]]; then
+  rm -rf "$BACKEND_VENV_DIR"
   echo "Creating backend virtualenv at $BACKEND_VENV_DIR ..."
   python3 -m venv "$BACKEND_VENV_DIR"
 fi

@@ -34,13 +34,17 @@ let dashboardState = {
   sessions: [],
   analyticsSessions: [],
   visits: [],
+  sessionReflections: [],
   inactivityThresholdMinutes: DEFAULT_INACTIVITY_THRESHOLD_MINUTES,
   noGoalHourlyIntervalHours: DEFAULT_NO_GOAL_HOURLY_INTERVAL_HOURS,
   notificationPreferences: null,
-  assistantMessages: ASSISTANT_DEFAULT_MESSAGES.slice()
+  assistantMessages: ASSISTANT_DEFAULT_MESSAGES.slice(),
+  overviewInsights: [],
+  assistantStarterPrompts: []
 };
 let assistantLoading = false;
-let assistantFollowUps = [];
+let overviewInsightsLoading = false;
+let overviewInsightsRequestKey = "";
 
 function showDashboardError(message) {
   const shell = document.querySelector(".appShell");
@@ -78,6 +82,17 @@ window.addEventListener("unhandledrejection", (event) => {
   showDashboardError("Reload the extension in chrome://extensions and reopen the dashboard.");
 });
 
+document.addEventListener(
+  "error",
+  (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLImageElement)) return;
+    if (!target.hasAttribute("data-hide-on-error")) return;
+    target.style.visibility = "hidden";
+  },
+  true
+);
+
 function normalizeInactivityThresholdMinutes(value) {
   const minutes = Number(value);
   if (!Number.isFinite(minutes)) return DEFAULT_INACTIVITY_THRESHOLD_MINUTES;
@@ -98,6 +113,73 @@ function normalizeSessionName(value) {
 function describeSessionName(name) {
   const normalized = normalizeSessionName(name);
   return normalized || "Unnamed session";
+}
+
+function getLatestSessionReflection(sessionId) {
+  const target = String(sessionId || "");
+  if (!target) return null;
+  return (dashboardState.sessionReflections || [])
+    .filter((entry) => String(entry?.sessionId || "") === target)
+    .sort((a, b) => Number(b?.timestamp || 0) - Number(a?.timestamp || 0))[0] || null;
+}
+
+function getSessionReflections(sessionId) {
+  const target = String(sessionId || "");
+  if (!target) return [];
+  return (dashboardState.sessionReflections || [])
+    .filter((entry) => String(entry?.sessionId || "") === target)
+    .sort((a, b) => Number(a?.timestamp || 0) - Number(b?.timestamp || 0));
+}
+
+function getLatestSessionEndReflection(sessionId) {
+  return getSessionReflections(sessionId)
+    .filter((entry) => entry?.type === "session-ended")
+    .sort((a, b) => Number(b?.timestamp || 0) - Number(a?.timestamp || 0))[0] || null;
+}
+
+function buildSingleReflectionHtml(reflection) {
+  if (!reflection?.reflection) return "";
+
+  if (reflection.type === "session-ended" || reflection.action === "inactive-end") {
+    const lastActivityLabel = reflection.lastActivityAt
+      ? `Last activity: ${fmtTime(Number(reflection.lastActivityAt))}`
+      : "No recent activity recorded";
+    return `
+      <div class="sessionReflectionNote">
+        <strong>${escapeHtml(reflection.reflection)}.</strong>
+        <span>${escapeHtml(lastActivityLabel)}</span>
+      </div>
+    `;
+  }
+
+  const actionLabel =
+    reflection.action === "extend"
+      ? (
+          reflection.extensionMinutes > 0
+            ? `Extended by ${reflection.extensionMinutes} min`
+            : "Extended"
+        )
+      : reflection.action === "no-goal"
+        ? "Switched to no goal"
+        : reflection.action === "end"
+          ? "Ended session"
+          : "Adjusted session";
+
+  return `
+    <div class="sessionReflectionNote">
+      <strong>${escapeHtml(actionLabel)}:</strong>
+      <span>${escapeHtml(reflection.reflection)}</span>
+    </div>
+  `;
+}
+
+function buildReflectionHtml(reflections) {
+  const entries = Array.isArray(reflections)
+    ? reflections.filter((entry) => entry?.reflection)
+    : (reflections?.reflection ? [reflections] : []);
+
+  if (!entries.length) return "";
+  return entries.map((entry) => buildSingleReflectionHtml(entry)).join("");
 }
 
 function buildIntentRecord(sessionId, minutes, sessionName) {
@@ -222,8 +304,18 @@ function escapeHtml(str) {
   });
 }
 
-function summarizeAssistantText(text) {
+function summarizeAssistantUserText(text) {
   return String(text || "").trim().replace(/\s+/g, " ").slice(0, 4000);
+}
+
+function summarizeAssistantMessageText(text) {
+  return String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim().replace(/[ \t]+/g, " "))
+    .join("\n")
+    .trim()
+    .slice(0, 4000);
 }
 
 function normalizeAssistantMessages(messages) {
@@ -231,7 +323,10 @@ function normalizeAssistantMessages(messages) {
   const normalized = rows
     .map((row) => ({
       role: row?.role === "user" ? "user" : "assistant",
-      content: summarizeAssistantText(row?.content)
+      content:
+        row?.role === "user"
+          ? summarizeAssistantUserText(row?.content)
+          : summarizeAssistantMessageText(row?.content)
     }))
     .filter((row) => row.content);
   return normalized.length ? normalized : ASSISTANT_DEFAULT_MESSAGES.slice();
@@ -253,52 +348,54 @@ function formatAssistantContent(text) {
 
   const htmlParts = [];
   let bulletItems = [];
+  let numberItems = [];
 
   const flushBullets = () => {
     if (!bulletItems.length) return;
-    htmlParts.push(`<ul>${bulletItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`);
+    htmlParts.push(`<ul class="assistantList">${bulletItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`);
     bulletItems = [];
   };
 
+  const flushNumbers = () => {
+    if (!numberItems.length) return;
+    htmlParts.push(`<ol class="assistantList assistantListOrdered">${numberItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`);
+    numberItems = [];
+  };
+
   for (const line of lines) {
+    const headingMatch = line.match(/^(Summary|Key points|Next):$/i);
+    if (headingMatch) {
+      flushBullets();
+      flushNumbers();
+      htmlParts.push(`<div class="assistantHeading">${escapeHtml(headingMatch[1])}</div>`);
+      continue;
+    }
     const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
     if (bulletMatch) {
+      flushNumbers();
       bulletItems.push(bulletMatch[1]);
       continue;
     }
+    const numberMatch = line.match(/^\d+\.\s+(.*)$/);
+    if (numberMatch) {
+      flushBullets();
+      numberItems.push(numberMatch[1]);
+      continue;
+    }
+    const labelMatch = line.match(/^([A-Za-z][A-Za-z\s]+):\s+(.*)$/);
     flushBullets();
+    flushNumbers();
+    if (labelMatch && labelMatch[1].length <= 32) {
+      htmlParts.push(
+        `<p class="assistantLabelLine"><span class="assistantLabel">${escapeHtml(labelMatch[1])}:</span> ${escapeHtml(labelMatch[2])}</p>`
+      );
+      continue;
+    }
     htmlParts.push(`<p>${escapeHtml(line)}</p>`);
   }
   flushBullets();
+  flushNumbers();
   return htmlParts.join("");
-}
-
-function buildAssistantFollowUps(question, context) {
-  const q = String(question || "").toLowerCase();
-  const anchor = String(context?.selectedAnchorSite || "").trim();
-  const followUps = [];
-
-  if (anchor) {
-    if (!q.includes("after")) {
-      followUps.push(`What usually happens after ${anchor}?`);
-    }
-    if (!q.includes("lead")) {
-      followUps.push(`What usually leads into ${anchor}?`);
-    }
-    followUps.push(`How much time do I spend on ${anchor}?`);
-  }
-
-  if (!q.includes("session")) {
-    followUps.push("Break that down by session.");
-  }
-  if (!q.includes("time of day")) {
-    followUps.push("Show the time-of-day pattern.");
-  }
-  if (!q.includes("top site")) {
-    followUps.push("What are my top sites today?");
-  }
-
-  return [...new Set(followUps)].slice(0, 3);
 }
 
 function isValidDomain(domain) {
@@ -500,7 +597,10 @@ function buildLiveSessions(sessions, activeSession, visits) {
     lastVisit.time,
     Number(lastVisit.lastActiveTime || lastVisit.firstInteractionTime || lastVisit.time)
   );
-  const effectiveEndTime = now;
+  const effectiveEndTime =
+    now - lastRecordedActiveTime <= inactivityThresholdMs
+      ? now
+      : lastRecordedActiveTime;
   const liveTailMs = Math.max(0, effectiveEndTime - lastRecordedActiveTime);
   if (!liveTailMs) return sessions;
 
@@ -524,6 +624,13 @@ function buildLiveSessions(sessions, activeSession, visits) {
       }
     };
   });
+}
+
+function hasMeaningfulSessionActivity(session) {
+  if (!session?.metrics) return false;
+  const uniqueDomains = Array.isArray(session.metrics.uniqueDomains) ? session.metrics.uniqueDomains : [];
+  if (uniqueDomains.some((domain) => isDisplayDomain(domain))) return true;
+  return (session.visits || []).some((visit) => isDisplayDomain(visit?.domain));
 }
 
 function computeHourlyMinutes(sessions) {
@@ -958,12 +1065,17 @@ function renderFootprintExplorer(sessions) {
 
 function computeExtendedSessionSites(sessions, limit = 3) {
   const counts = new Map();
+  const extendedGoalSessions = (sessions || []).filter((session) => {
+    const initialGoalMinutes = Number(session?.metrics?.initialIntendedMinutes ?? session?.metrics?.intendedMinutes ?? 0);
+    return initialGoalMinutes > 0;
+  });
 
   (sessions || []).forEach((session) => {
     const intendedMs = Number(session?.metrics?.intendedMs) || 0;
     const overrunMs = Number(session?.metrics?.overrunMs) || 0;
     const durationMs = Number(session?.metrics?.durationMs) || 0;
-    if (intendedMs <= 0 || overrunMs <= 0) return;
+    const addedMinutes = Math.max(0, Number(session?.metrics?.totalExtendedMinutes || 0));
+    if (intendedMs <= 0 || (overrunMs <= 0 && addedMinutes <= 0)) return;
 
     const uniqueDomains = new Set(
       (session?.visits || [])
@@ -975,16 +1087,23 @@ function computeExtendedSessionSites(sessions, limit = 3) {
       const existing = counts.get(domain) || {
         domain,
         sessions: 0,
-        totalTimeMs: 0
+        totalTimeMs: 0,
+        totalAddedMinutes: 0
       };
 
       existing.sessions += 1;
       existing.totalTimeMs += durationMs;
+      existing.totalAddedMinutes += addedMinutes;
       counts.set(domain, existing);
     });
   });
 
   return Array.from(counts.values())
+    .map((entry) => ({
+      ...entry,
+      averageAddedMinutes: entry.sessions ? entry.totalAddedMinutes / entry.sessions : 0,
+      extensionRate: extendedGoalSessions.length ? entry.sessions / extendedGoalSessions.length : 0
+    }))
     .sort((a, b) => (
       b.sessions - a.sessions ||
       b.totalTimeMs - a.totalTimeMs ||
@@ -1409,57 +1528,97 @@ function renderCurrentSession(activeSession, visits = []) {
     return;
   }
 
-  const now = Date.now();
   const currentSessionVisits = (visits || []).filter(
     (visit) => visit?.sessionId === activeSession.id && isDisplayDomain(visit.domain)
   );
-  const validDomains = Array.from(new Set(currentSessionVisits.map((visit) => visit.domain)));
-  const visitUrls = new Map();
-  currentSessionVisits.forEach((visit) => {
-    if (!visitUrls.has(visit.domain)) {
-      visitUrls.set(visit.domain, visit.url);
-    }
-  });
-  const siteChips = validDomains.length
-    ? validDomains
+  const mostRecentDistinctVisits = [];
+  const seenDomains = new Set();
+  [...currentSessionVisits]
+    .sort((a, b) => {
+      const aEnd = Math.max(
+        Number(a?.time || 0),
+        Number(a?.lastActiveTime || a?.firstInteractionTime || a?.time || 0)
+      );
+      const bEnd = Math.max(
+        Number(b?.time || 0),
+        Number(b?.lastActiveTime || b?.firstInteractionTime || b?.time || 0)
+      );
+      return bEnd - aEnd;
+    })
+    .forEach((visit) => {
+      if (!visit?.domain || seenDomains.has(visit.domain)) return;
+      seenDomains.add(visit.domain);
+      mostRecentDistinctVisits.push(visit);
+    });
+
+  const recentDomains = mostRecentDistinctVisits.map((visit) => visit.domain);
+  const siteChips = recentDomains.length
+    ? mostRecentDistinctVisits
         .slice(0, 4)
         .map(
-          (domain) => `
+          (visit) => {
+            const domain = visit?.domain || "";
+            return `
             <a
               class="siteChip"
-              href="${hrefForVisit(visitUrls.get(domain), domain)}"
+              href="${hrefForVisit(visit?.url, domain)}"
               target="_blank"
               rel="noopener noreferrer"
             >
-              <img src="${resolveFaviconSrc(currentSessionVisits.find((visit) => visit.domain === domain) || domain, 32)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden';" />
+              <img src="${resolveFaviconSrc(visit || domain, 32)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-hide-on-error="true" />
               <span class="siteChipLabel">${escapeHtml(domain)}</span>
             </a>
-          `
+          `;
+          }
         )
         .join("")
     : "No sites yet.";
 
-  const effectiveEndTime = now;
-  const elapsedMs = Math.max(0, effectiveEndTime - activeSession.startTime);
+  const latestRecordedVisitEnd = currentSessionVisits.reduce((latest, visit) => {
+    const visitEnd = Math.max(
+      Number(visit?.time || 0),
+      Number(visit?.lastActiveTime || visit?.firstInteractionTime || visit?.time || 0)
+    );
+    return Math.max(latest, visitEnd);
+  }, 0);
+  const effectiveEndTime = Math.max(
+    Number(activeSession.lastEventTime || 0),
+    latestRecordedVisitEnd,
+    Number(activeSession.startTime || 0)
+  );
+  const inactivityWindowMs = Math.max(
+    1,
+    Number(dashboardState.inactivityThresholdMinutes || DEFAULT_INACTIVITY_THRESHOLD_MINUTES || 5)
+  ) * 60 * 1000;
+  const canTickLive = Date.now() - effectiveEndTime <= inactivityWindowMs;
+  const elapsedMs = Math.max(
+    0,
+    (canTickLive ? Date.now() : effectiveEndTime) - activeSession.startTime
+  );
   const goalMinutes = activeSession.intendedMinutes;
+  const initialGoalMinutes =
+    activeSession.initialIntendedMinutes != null
+      ? Number(activeSession.initialIntendedMinutes)
+      : (goalMinutes != null ? Number(goalMinutes) : null);
+  const addedMinutes = Math.max(0, Number(activeSession.totalExtendedMinutes || 0));
   const ringBasisMinutes = goalMinutes || 30;
   const ratio = elapsedMs / (ringBasisMinutes * 60 * 1000);
 
   progressContainer.innerHTML = buildProgressSvg(
     fmtElapsed(elapsedMs),
-    goalMinutes ? `${goalMinutes}m` : "free",
+    describeGoalWithExtensions(goalMinutes, initialGoalMinutes, addedMinutes),
     ratio,
     goalMinutes != null
   );
   sitesList.innerHTML = siteChips;
-  sessionSites.textContent = `${validDomains.length} ${validDomains.length === 1 ? "site" : "sites"}`;
+  sessionSites.textContent = `${recentDomains.length} ${recentDomains.length === 1 ? "site" : "sites"}`;
   sessionVisitsCount.textContent = `${currentSessionVisits.length} visits`;
   currentSessionName.classList.add("sessionNameEditable");
   currentSessionName.textContent = `Session Name: ${describeSessionName(activeSession.sessionName)}`;
   currentSessionName.dataset.sessionId = activeSession.id || "";
   currentSessionName.dataset.sessionStart = String(activeSession.startTime || "");
   currentSessionName.dataset.sessionName = activeSession.sessionName || "";
-  sessionGoal.textContent = `Goal: ${describeGoal(goalMinutes)}`;
+  sessionGoal.textContent = `Goal: ${describeGoalWithExtensions(goalMinutes, initialGoalMinutes, addedMinutes)}`;
 }
 
 function renderCurrentSessionData(activeSession, visits) {
@@ -1473,20 +1632,22 @@ function renderCurrentSessionData(activeSession, visits) {
   const sessionVisits = (visits || [])
     .filter((visit) => visit?.sessionId === activeSession.id && isDisplayDomain(visit.domain))
     .sort((a, b) => b.time - a.time);
+  const reflectionHtml = buildReflectionHtml(getSessionReflections(activeSession.id));
 
   if (!sessionVisits.length) {
-    container.innerHTML = `<div class="muted">No sites recorded in the current session yet.</div>`;
+    container.innerHTML = `${reflectionHtml}<div class="muted">No sites recorded in the current session yet.</div>`;
     return;
   }
 
   container.innerHTML = `
+    ${reflectionHtml}
     <div class="sessionDetailsList">
       ${sessionVisits
         .map(
           (visit) => `
             <div class="sessionVisitRow">
               <div class="sessionVisitMain">
-                <img src="${resolveFaviconSrc(visit, 32)}" alt="" class="siteFavicon" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden';" />
+                <img src="${resolveFaviconSrc(visit, 32)}" alt="" class="siteFavicon" loading="lazy" referrerpolicy="no-referrer" data-hide-on-error="true" />
                 <a
                   class="sessionVisitDomain"
                   href="${hrefForVisit(visit, visit.domain)}"
@@ -1530,8 +1691,8 @@ function buildProgressSvg(valueLabel, goalLabel, ratio, hasGoal = true) {
         transform="rotate(-90 ${cx} ${cy})"
       ></circle>
       <text class="progressValue" x="${cx}" y="${cy + 4}">${valueLabel}</text>
-      <text class="progressGoal" x="${cx}" y="${cy + 24}">/ ${goalLabel}</text>
     </svg>
+    <div class="progressGoalCaption">${escapeHtml(goalLabel)}</div>
   `;
 }
 
@@ -1544,7 +1705,7 @@ function buildSessionVisitsHtml(visits = []) {
       (visit) => `
         <div class="sessionVisitRow">
           <div class="sessionVisitMain">
-            <img src="${resolveFaviconSrc(visit, 32)}" alt="" class="siteFavicon" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden';" />
+            <img src="${resolveFaviconSrc(visit, 32)}" alt="" class="siteFavicon" loading="lazy" referrerpolicy="no-referrer" data-hide-on-error="true" />
             <a
               class="sessionVisitDomain"
               href="${hrefForVisit(visit, visit.domain)}"
@@ -1561,21 +1722,75 @@ function buildSessionVisitsHtml(visits = []) {
 
 function buildGoalBadgeHtml(metrics = {}) {
   const goal = metrics.intendedMinutes;
+  const initialGoal =
+    metrics.initialIntendedMinutes != null
+      ? Number(metrics.initialIntendedMinutes)
+      : (goal != null ? Number(goal) : null);
+  const addedMinutes = Math.max(0, Number(metrics.totalExtendedMinutes || 0));
   const overrunMs = metrics.overrunMs || 0;
   const overrunMinutes = msToMinutes(overrunMs);
+  const sessionReflections = getSessionReflections(metrics.sessionId || metrics.id || "");
 
-  if (!goal) return "";
+  if (!goal && initialGoal == null) return "";
+
+  const goalLabel = initialGoal != null ? `${initialGoal}m initial` : `${goal}m goal`;
+  const reflectionBadges = sessionReflections
+    .map((reflection) => {
+      if (reflection.type === "session-ended" || reflection.action === "inactive-end") {
+        return `<div class="goalBadge goalBadgeSecondary">Ended due to inactivity</div>`;
+      }
+      if (reflection.action === "extend" && Number(reflection.extensionMinutes || 0) > 0) {
+        return `<div class="goalBadge goalBadgeSecondary">Extended intentionally (+${Number(reflection.extensionMinutes)}m)</div>`;
+      }
+      if (reflection.action === "no-goal") {
+        return `<div class="goalBadge goalBadgeSecondary">Continued with no goal</div>`;
+      }
+      if (reflection.action === "end") {
+        return `<div class="goalBadge goalBadgeSecondary">Ended intentionally</div>`;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("");
+  const fallbackAddedBadge = addedMinutes > 0 && !reflectionBadges
+    ? `<div class="goalBadge goalBadgeSecondary">Extended intentionally (+${addedMinutes}m)</div>`
+    : "";
+  const noGoalLaterBadge = !goal && initialGoal != null && !reflectionBadges
+    ? `<div class="goalBadge goalBadgeSecondary">Continued with no goal</div>`
+    : "";
 
   if (overrunMinutes > 0) {
+    const outcomeBadge = `<div class="overrunBadge">Over ${overrunMinutes}m</div>`;
     return `
       <div class="badgeStack">
-        <div class="goalBadge">${goal}m goal</div>
-        <div class="overrunBadge">${overrunMinutes}m over</div>
+        <div class="goalBadge">${goalLabel}</div>
+        ${reflectionBadges}
+        ${fallbackAddedBadge}
+        ${noGoalLaterBadge}
+        ${outcomeBadge}
       </div>
     `;
   }
 
-  return `<div class="goalBadge">${goal}m goal</div>`;
+  return `
+    <div class="badgeStack">
+      <div class="goalBadge">${goalLabel}</div>
+      ${reflectionBadges}
+      ${fallbackAddedBadge}
+      ${noGoalLaterBadge}
+    </div>
+  `;
+}
+
+function describeGoalWithExtensions(goalMinutes, initialGoalMinutes, addedMinutes) {
+  if (goalMinutes == null && initialGoalMinutes == null) return "free";
+  if (goalMinutes == null && initialGoalMinutes != null) {
+    return `Initial goal ${initialGoalMinutes}m, now no goal`;
+  }
+  if (initialGoalMinutes != null && addedMinutes > 0) {
+    return `${initialGoalMinutes}m initial, extended by ${addedMinutes}m`;
+  }
+  return describeGoal(goalMinutes);
 }
 
 function buildTrashIcon() {
@@ -1636,7 +1851,9 @@ async function updateSessionName(sessionId, sessionStart, sessionName) {
       sessionId,
       startTime: sessionStart,
       intendedMinutes: fallbackMinutes,
-      sessionName: normalizedName
+      sessionName: normalizedName,
+      initialIntendedMinutes: fallbackMinutes,
+      totalExtendedMinutes: 0
     });
     return next;
   };
@@ -1666,7 +1883,7 @@ async function updateSessionName(sessionId, sessionStart, sessionName) {
     analyticsSessionIntents: upsertIntentName(analyticsSessionIntents, nextAnalyticsActiveSession?.intendedMinutes ?? null)
   });
 
-  chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
+  safeRuntimeSignal({ type: "rebuildSessions" });
   await refresh();
 }
 
@@ -1677,12 +1894,14 @@ async function deleteSessionData(sessionId, sessionStart) {
     activeSession,
     visits = [],
     sessionIntents = [],
+    sessionReflections = [],
     manualSessionStarts = [],
     lastUserActivityAt
   } = await chrome.storage.local.get([
     "activeSession",
     "visits",
     "sessionIntents",
+    "sessionReflections",
     "manualSessionStarts",
     "lastUserActivityAt"
   ]);
@@ -1694,6 +1913,7 @@ async function deleteSessionData(sessionId, sessionStart) {
 
   const keptVisits = visits.filter((visit) => !matchesSession(visit?.sessionId, visit?.sessionStartTime));
   const keptIntents = sessionIntents.filter((intent) => !matchesSession(intent?.sessionId, intent?.startTime));
+  const keptReflections = sessionReflections.filter((entry) => !matchesSession(entry?.sessionId, sessionStartNumber));
   const keptManualStarts = manualSessionStarts.filter((ts) => Number(ts) !== sessionStartNumber);
   const shouldClearActiveSession = activeSession && matchesSession(activeSession.id, activeSession.startTime);
 
@@ -1702,11 +1922,12 @@ async function deleteSessionData(sessionId, sessionStart) {
     sessions: [],
     activeSession: shouldClearActiveSession ? null : activeSession || null,
     sessionIntents: keptIntents,
+    sessionReflections: keptReflections,
     manualSessionStarts: keptManualStarts,
     lastUserActivityAt: shouldClearActiveSession ? Date.now() : lastUserActivityAt
   });
 
-  chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
+  safeRuntimeSignal({ type: "rebuildSessions" });
   setStatusText("clearDataStatus", "That session was removed from dashboard history. Analytics data was kept.");
   await refresh();
 }
@@ -1772,10 +1993,16 @@ function renderSessionsList(sessions) {
       if (meta[1]) meta[1].textContent = `${validUniqueDomains.length} sites`;
       if (meta[2]) meta[2].textContent = `${session.metrics.totalVisits || 0} visits`;
       if (badgeSlot) {
-        badgeSlot.innerHTML = buildGoalBadgeHtml(session.metrics);
+        badgeSlot.innerHTML = buildGoalBadgeHtml({
+          ...session.metrics,
+          sessionId: session.visits?.[0]?.sessionId || session.id || ""
+        });
       }
       if (detailsList) {
-        detailsList.innerHTML = visitsHtml || '<div class="muted">No visits recorded.</div>';
+        detailsList.innerHTML = `
+          ${buildReflectionHtml(getSessionReflections(session.visits?.[0]?.sessionId || session.id))}
+          ${visitsHtml || '<div class="muted">No visits recorded.</div>'}
+        `;
       }
     });
     return;
@@ -1790,6 +2017,7 @@ function renderSessionsList(sessions) {
       const isExpanded = expandedSessionStarts.has(sessionKey);
       const validUniqueDomains = (session.metrics.uniqueDomains || []).filter(isDisplayDomain);
       const visitsHtml = buildSessionVisitsHtml(session.visits || []);
+      const reflectionHtml = buildReflectionHtml(getSessionReflections(session.visits?.[0]?.sessionId || session.id));
 
       return `
         <div class="sessionRow" data-session-start="${sessionKey}">
@@ -1807,7 +2035,10 @@ function renderSessionsList(sessions) {
                     >${escapeHtml(describeSessionName(session.metrics.sessionName))}</div>
                   </div>
                   <div class="sessionHeaderRight">
-                    <div class="sessionBadgeSlot">${buildGoalBadgeHtml(session.metrics)}</div>
+                    <div class="sessionBadgeSlot">${buildGoalBadgeHtml({
+                      ...session.metrics,
+                      sessionId: session.visits?.[0]?.sessionId || session.id || ""
+                    })}</div>
                   </div>
                 </div>
               </button>
@@ -1837,6 +2068,7 @@ function renderSessionsList(sessions) {
           </div>
           <div class="sessionDetails" ${isExpanded ? "" : "hidden"}>
             <div class="sessionDetailsList">
+              ${reflectionHtml}
               ${visitsHtml || '<div class="muted">No visits recorded.</div>'}
             </div>
           </div>
@@ -1932,7 +2164,7 @@ function renderTopSitesToday(timePerDomain, visitsPerDomain, latestUrlPerDomain 
       <div class="siteRow" data-domain="${domain}">
         <div class="siteRank">${index + 1}</div>
         <div class="siteMain">
-          <img src="${resolveFaviconSrc({ domain, url: latestUrlPerDomain[domain]?.url }, 32)}" alt="" class="siteFavicon" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden';" />
+          <img src="${resolveFaviconSrc({ domain, url: latestUrlPerDomain[domain]?.url }, 32)}" alt="" class="siteFavicon" loading="lazy" referrerpolicy="no-referrer" data-hide-on-error="true" />
           <div>
             <a class="siteName" href="${hrefForVisit(latestUrlPerDomain[domain]?.url, domain)}" target="_blank" rel="noopener noreferrer">${escapeHtml(domain)}</a>
             <div class="siteMeta">${visitsPerDomain[domain] || 0} visits</div>
@@ -2055,7 +2287,7 @@ function renderHistoryList(sessions) {
                       (visit) => `
                         <div class="sessionVisitRow">
                           <div class="sessionVisitMain">
-                            <img src="${resolveFaviconSrc(visit, 32)}" alt="" class="siteFavicon" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden';" />
+                            <img src="${resolveFaviconSrc(visit, 32)}" alt="" class="siteFavicon" loading="lazy" referrerpolicy="no-referrer" data-hide-on-error="true" />
                             <a
                               class="sessionVisitDomain"
                               href="${hrefForVisit(visit, visit.domain)}"
@@ -2233,7 +2465,6 @@ function renderSequenceInsights(sessions) {
               : `${row.count} occurrences across ${row.sessions} sessions`
           }</div>
         </div>
-        <div class="siteTime">${row.type === "loop" ? `${row.sessions}s` : `${row.count}x`}</div>
       </div>
     `)
     .join("");
@@ -2246,7 +2477,7 @@ function renderExtendedSessionInsights(sessions) {
   const rows = computeExtendedSessionSites(sessions);
 
   if (!rows.length) {
-    container.innerHTML = `<div class="muted">No sessions with an intended duration have gone over their goal yet.</div>`;
+    container.innerHTML = `<div class="muted">No sessions have needed an intentional extension yet.</div>`;
     return;
   }
 
@@ -2257,7 +2488,7 @@ function renderExtendedSessionInsights(sessions) {
         <div class="siteMain">
           <div>
             <div class="siteName">${escapeHtml(row.domain)}</div>
-            <div class="siteMeta">Appeared in ${row.sessions} extended sessions</div>
+            <div class="siteMeta">Appeared in ${row.sessions} intentionally extended sessions</div>
           </div>
         </div>
       </div>
@@ -2290,9 +2521,9 @@ function renderTimeOfDayInsights(sessions) {
         <small>${longestSessionHour ? `${msToPretty(longestSessionHour.avgDurationMs)} avg session` : "No session data"}</small>
       </div>
       <div class="timeOfDayMetric">
-        <span>Overrun-prone hour</span>
+        <span>Most likely to exceed original goal</span>
         <strong>${overrunProneHour ? overrunProneHour.label : "-"}</strong>
-        <small>${overrunProneHour ? `${Math.round(overrunProneHour.overrunRate * 100)}% of goal-based sessions ran over` : "No goal-based sessions yet"}</small>
+        <small>${overrunProneHour ? `${Math.round(overrunProneHour.overrunRate * 100)}% of goal-based sessions passed their original goal` : "No goal-based sessions yet"}</small>
       </div>
       <div class="timeOfDayMetric">
         <span>Most common active window</span>
@@ -2303,6 +2534,163 @@ function renderTimeOfDayInsights(sessions) {
   `;
 }
 
+function buildOverviewInsightsRequestKey(context) {
+  const todaySummary = context?.todaySummary || {};
+  const analytics = context?.analytics || {};
+  const topSite = todaySummary?.topSites?.[0] || {};
+  const topPattern = analytics?.workflowPatterns?.[0] || {};
+  const activeWindow = analytics?.commonActiveWindow || {};
+  const extensionStats = analytics?.overrunExtensions || {};
+  return JSON.stringify({
+    totalTimeMs: todaySummary.totalTimeMs || 0,
+    sessionCount: todaySummary.sessionCount || 0,
+    topSite: topSite.domain || "",
+    topSiteMinutes: topSite.minutes || 0,
+    patternSites: topPattern.sites || [],
+    patternOccurrences: topPattern.occurrences || 0,
+    activeWindow: activeWindow.label || activeWindow || "",
+    extendedSessionCount: extensionStats.extendedSessionCount || 0,
+    averageAddedMinutes: extensionStats.averageAddedMinutes || 0,
+    topReflection: extensionStats.topReflection?.reason || ""
+  });
+}
+
+function renderOverviewInsights() {
+  const mount = document.getElementById("overviewInsights");
+  if (!mount) return;
+
+  if (overviewInsightsLoading && !dashboardState.overviewInsights.length) {
+    mount.innerHTML = `<div class="muted">Loading personalized insights...</div>`;
+    return;
+  }
+
+  const insights = Array.isArray(dashboardState.overviewInsights) ? dashboardState.overviewInsights.slice(0, 3) : [];
+  if (!insights.length) {
+    mount.innerHTML = `<div class="muted">Not enough browsing data yet to generate personalized insights.</div>`;
+    return;
+  }
+
+  mount.innerHTML = `
+    <div class="overviewInsightCards">
+      ${insights.map((insight) => `
+        <article class="overviewInsightCard overviewInsightCard--${escapeHtml(insight.tone || "neutral")}">
+          <div class="overviewInsightEyebrow overviewInsightEyebrow--${escapeHtml(insight.tone || "neutral")}">${escapeHtml(insight.eyebrow || "AI insight")}</div>
+          <div class="overviewInsightBody">
+            <h3 class="overviewInsightTitle">${escapeHtml(insight.title || "Insight")}</h3>
+            ${insight.summary ? `<p class="overviewInsightSummary">${escapeHtml(insight.summary || "")}</p>` : ""}
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function buildAssistantStarterPrompts(context) {
+  const prompts = [];
+  const topSite = context?.todaySummary?.topSites?.[0]?.domain || "";
+  const topPattern = context?.analytics?.workflowPatterns?.[0] || null;
+  const overrunHour = context?.analytics?.overrunProneHour || null;
+
+  prompts.push("How much time have I spent today?");
+
+  if (topPattern?.sites?.length >= 2) {
+    prompts.push(`What sites do I switch between the most?`);
+  } else if (topSite) {
+    prompts.push(`How much time have I spent on ${topSite} this week?`);
+  }
+
+  if (overrunHour?.label) {
+    prompts.push(`When am I most likely to go over my intended time?`);
+  } else if (topSite) {
+    prompts.push(`What usually happens after ${topSite}?`);
+  }
+
+  return [...new Set(prompts)].slice(0, 3);
+}
+
+function renderAssistantStarterPrompts() {
+  const mount = document.getElementById("assistantStarterPrompts");
+  if (!mount) return;
+
+  const prompts = Array.isArray(dashboardState.assistantStarterPrompts)
+    ? dashboardState.assistantStarterPrompts.slice(0, 3)
+    : [];
+
+  if (!prompts.length) {
+    mount.innerHTML = "";
+    return;
+  }
+
+  mount.innerHTML = prompts
+    .map((prompt) => `
+      <button
+        type="button"
+        class="assistantStarterPrompt"
+        data-assistant-prompt="${escapeHtml(prompt)}"
+      >${escapeHtml(prompt)}</button>
+    `)
+    .join("");
+}
+
+function autoResizeAssistantInput() {
+  const input = document.getElementById("assistantInput");
+  if (!(input instanceof HTMLTextAreaElement)) return;
+  input.style.height = "auto";
+  const nextHeight = Math.min(Math.max(input.scrollHeight, 44), 180);
+  input.style.height = `${nextHeight}px`;
+}
+
+async function safeRuntimeMessage(message) {
+  try {
+    return await chrome.runtime.sendMessage(message);
+  } catch (error) {
+    const text = String(error?.message || error || "");
+    if (text.includes("No SW") || text.includes("Receiving end does not exist")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function safeRuntimeSignal(message, onDone = null) {
+  try {
+    chrome.runtime.sendMessage(message, () => {
+      void chrome.runtime.lastError;
+      if (typeof onDone === "function") onDone();
+    });
+  } catch {
+    if (typeof onDone === "function") onDone();
+  }
+}
+
+async function loadOverviewInsights(context) {
+  const nextKey = buildOverviewInsightsRequestKey(context);
+  if (overviewInsightsLoading || nextKey === overviewInsightsRequestKey) {
+    renderOverviewInsights();
+    return;
+  }
+
+  overviewInsightsLoading = true;
+  renderOverviewInsights();
+
+  try {
+    const response = await safeRuntimeMessage({
+      type: "getOverviewInsights",
+      context
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error || "Could not load overview insights.");
+    }
+    dashboardState.overviewInsights = Array.isArray(response.insights) ? response.insights : [];
+    overviewInsightsRequestKey = nextKey;
+  } catch {
+    dashboardState.overviewInsights = [];
+  } finally {
+    overviewInsightsLoading = false;
+    renderOverviewInsights();
+  }
+}
+
 function renderAssistant() {
   const thread = document.getElementById("assistantThread");
   const input = document.getElementById("assistantInput");
@@ -2310,7 +2698,7 @@ function renderAssistant() {
   if (!thread || !input || !sendBtn) return;
 
   const messages = normalizeAssistantMessages(dashboardState.assistantMessages);
-  thread.innerHTML = messages
+  const renderedMessages = messages
     .map((message, index) => {
       if (message.role === "user") {
         return `
@@ -2325,29 +2713,33 @@ function renderAssistant() {
           <div class="assistantAvatar">AI</div>
           <div>
             <div class="assistantBubble bot">${formatAssistantContent(message.content)}</div>
-            ${
-              index === messages.length - 1 && assistantFollowUps.length
-                ? `<div class="assistantFollowUps">
-                    ${assistantFollowUps
-                      .map((prompt) => `<button class="assistantFollowUpChip" type="button" data-assistant-prompt="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>`)
-                      .join("")}
-                  </div>`
-                : ""
-            }
           </div>
         </div>
       `;
     })
     .join("");
 
+  const loadingMessage = assistantLoading
+    ? `
+      <div class="assistantMessage assistantMessageBot assistantMessageThinking">
+        <div class="assistantAvatar">AI</div>
+        <div>
+          <div class="assistantBubble bot">Thinking...</div>
+        </div>
+      </div>
+    `
+    : "";
+
+  thread.innerHTML = renderedMessages + loadingMessage;
+
   sendBtn.disabled = assistantLoading || !String(input.value || "").trim();
   input.disabled = assistantLoading;
 
-  if (assistantLoading) {
-    setAssistantStatus("Thinking...");
-  } else if (!document.getElementById("assistantStatus")?.textContent) {
+  if (!assistantLoading && !document.getElementById("assistantStatus")?.textContent) {
     setAssistantStatus("Ask about your browsing habits in plain language.");
   }
+
+  renderAssistantStarterPrompts();
 
   requestAnimationFrame(() => {
     thread.scrollTop = thread.scrollHeight;
@@ -2388,17 +2780,31 @@ function serializeVisitForAssistant(visit) {
 }
 
 function serializeSessionForAssistant(session) {
+  const metrics = session?.metrics || {};
+  const sessionId = String(session?.id || session?.visits?.[0]?.sessionId || "");
+  const latestReflection = getLatestSessionReflection(sessionId);
   return {
-    id: String(session?.id || session?.visits?.[0]?.sessionId || ""),
-    name: describeSessionName(session?.metrics?.sessionName),
-    start: Number(session?.metrics?.start || 0),
-    end: Number(session?.metrics?.end || 0),
-    durationMs: Number(session?.metrics?.durationMs || 0),
-    intendedMinutes: session?.metrics?.intendedMinutes ?? null,
-    totalVisits: Number(session?.metrics?.visitCount || session?.metrics?.totalVisits || 0),
-    siteCount: Number(session?.metrics?.siteCount || 0),
+    id: sessionId,
+    name: describeSessionName(metrics.sessionName),
+    start: Number(metrics.start || 0),
+    end: Number(metrics.end || 0),
+    durationMs: Number(metrics.durationMs || 0),
+    intendedMinutes: metrics.intendedMinutes ?? null,
+    initialIntendedMinutes:
+      metrics.initialIntendedMinutes != null ? Number(metrics.initialIntendedMinutes) : null,
+    totalExtendedMinutes: Math.max(0, Number(metrics.totalExtendedMinutes || 0)),
+    totalVisits: Number(metrics.visitCount || metrics.totalVisits || 0),
+    siteCount: Number(metrics.siteCount || 0),
     topSites: getSessionTopSitesForAssistant(session),
-    timePerDomain: session?.metrics?.timePerDomain || {},
+    timePerDomain: metrics.timePerDomain || {},
+    latestReflection: latestReflection
+      ? {
+          action: latestReflection.action || "",
+          reflection: latestReflection.reflection || "",
+          extensionMinutes: Number(latestReflection.extensionMinutes || 0),
+          timestamp: Number(latestReflection.timestamp || 0)
+        }
+      : null,
     visits: (session?.visits || []).map(serializeVisitForAssistant)
   };
 }
@@ -2416,8 +2822,14 @@ function buildAssistantContext(liveSessions, analyticsSessions, today) {
       end: session.metrics.end,
       durationMs: session.metrics.durationMs,
       intendedMinutes: session.metrics.intendedMinutes,
+      initialIntendedMinutes:
+        session.metrics.initialIntendedMinutes != null
+          ? Number(session.metrics.initialIntendedMinutes)
+          : null,
+      totalExtendedMinutes: Math.max(0, Number(session.metrics.totalExtendedMinutes || 0)),
       siteCount: session.metrics.siteCount,
       visitCount: session.metrics.visitCount,
+      latestReflection: getLatestSessionReflection(session.visits?.[0]?.sessionId || session.id || ""),
       topSites: getSessionTopSitesForAssistant(session)
     }));
 
@@ -2438,16 +2850,48 @@ function buildAssistantContext(liveSessions, analyticsSessions, today) {
 
   const extendedRows = computeExtendedSessionSites(analyticsSessions).slice(0, 5).map((row) => ({
     domain: row.domain,
-    sessions: row.sessions
+    sessions: row.sessions,
+    averageAddedMinutes: Math.round(Number(row.averageAddedMinutes || 0)),
+    extensionRate: Number(row.extensionRate || 0)
   }));
 
   const timeOfDay = computeTimeOfDayTrends(analyticsSessions);
+  const reflections = (dashboardState.sessionReflections || [])
+    .slice()
+    .sort((a, b) => Number(b?.timestamp || 0) - Number(a?.timestamp || 0))
+    .slice(0, 25)
+    .map((entry) => ({
+      sessionId: String(entry?.sessionId || ""),
+      action: entry?.action || "",
+      reflection: entry?.reflection || "",
+      extensionMinutes: Number(entry?.extensionMinutes || 0),
+      timestamp: Number(entry?.timestamp || 0)
+    }));
+
+  const sessionsWithGoal = analyticsSessions.filter((session) => Number(session?.metrics?.initialIntendedMinutes ?? session?.metrics?.intendedMinutes ?? 0) > 0);
+  const extendedSessions = sessionsWithGoal.filter((session) => Number(session?.metrics?.totalExtendedMinutes || 0) > 0);
+  const averageAddedMinutes = extendedSessions.length
+    ? Math.round(
+        extendedSessions.reduce((sum, session) => sum + Number(session?.metrics?.totalExtendedMinutes || 0), 0) /
+        extendedSessions.length
+      )
+    : 0;
+  const reflectionCounts = {};
+  reflections.forEach((entry) => {
+    const key = String(entry?.reflection || "").trim();
+    if (!key) return;
+    reflectionCounts[key] = (reflectionCounts[key] || 0) + 1;
+  });
+  const topReflection = Object.entries(reflectionCounts).sort((a, b) => b[1] - a[1])[0] || null;
 
   return {
     currentSession: current
       ? {
           durationMs: Math.max(0, Date.now() - Number(current.startTime || Date.now())),
           intendedMinutes: current.intendedMinutes,
+          initialIntendedMinutes:
+            current.initialIntendedMinutes != null ? Number(current.initialIntendedMinutes) : null,
+          totalExtendedMinutes: Math.max(0, Number(current.totalExtendedMinutes || 0)),
           name: describeSessionName(current.sessionName),
           siteCount: Array.isArray(current.uniqueDomains) ? current.uniqueDomains.length : 0,
           visitCount: Number(current.visitCount || 0)
@@ -2466,6 +2910,15 @@ function buildAssistantContext(liveSessions, analyticsSessions, today) {
     analytics: {
       workflowPatterns: sequenceRows,
       extendedSessionSites: extendedRows,
+      overrunExtensions: {
+        extendedSessionCount: extendedSessions.length,
+        goalSessionCount: sessionsWithGoal.length,
+        averageAddedMinutes,
+        topReflection: topReflection
+          ? { reason: topReflection[0], count: topReflection[1] }
+          : null,
+        recentReflections: reflections.slice(0, 8)
+      },
       peakHour: timeOfDay.topHours?.[0] || null,
       longestSessionHour: timeOfDay.longestSessionHour || null,
       overrunProneHour: timeOfDay.overrunProneHour || null,
@@ -2481,7 +2934,7 @@ async function persistAssistantMessages(messages) {
 }
 
 async function askAssistant(question) {
-  const trimmed = summarizeAssistantText(question);
+  const trimmed = summarizeAssistantUserText(question);
   if (!trimmed) return;
 
   const liveSessions = buildLiveSessions(
@@ -2499,12 +2952,12 @@ async function askAssistant(question) {
 
   const nextMessages = [...history, { role: "user", content: trimmed }];
   assistantLoading = true;
-  setAssistantStatus("Thinking...");
+  setAssistantStatus("");
   await persistAssistantMessages(nextMessages);
 
   try {
     const context = buildAssistantContext(liveSessions, analyticsSessions, today);
-    const response = await chrome.runtime.sendMessage({
+    const response = await safeRuntimeMessage({
       type: "askAnalyticsAssistant",
       question: trimmed,
       history,
@@ -2519,13 +2972,11 @@ async function askAssistant(question) {
       ...nextMessages,
       {
         role: "assistant",
-        content: summarizeAssistantText(response.answer) || "I couldn't generate an answer from the current session data."
+        content: summarizeAssistantMessageText(response.answer) || "I couldn't generate an answer from the current session data."
       }
     ]);
-    assistantFollowUps = buildAssistantFollowUps(trimmed, context);
     setAssistantStatus("Answered from your saved dashboard data.");
   } catch (error) {
-    assistantFollowUps = [];
     dashboardState.assistantMessages = [
       ...nextMessages,
       {
@@ -2577,6 +3028,7 @@ async function clearTodayData() {
     sessions = [],
     activeSession,
     sessionIntents = [],
+    sessionReflections = [],
     manualSessionStarts = [],
     lastUserActivityAt
   } = await chrome.storage.local.get([
@@ -2584,6 +3036,7 @@ async function clearTodayData() {
     "sessions",
     "activeSession",
     "sessionIntents",
+    "sessionReflections",
     "manualSessionStarts",
     "lastUserActivityAt"
   ]);
@@ -2611,6 +3064,7 @@ async function clearTodayData() {
     const startTime = Number(intent?.startTime) || 0;
     return !sessionIdMatchesToday && (startTime < todayStart || startTime >= tomorrowStart || !startTime);
   });
+  const keptReflections = sessionReflections.filter((entry) => !todaySessionIds.has(String(entry?.sessionId || "")));
 
   const keptManualStarts = manualSessionStarts.filter((ts) => ts < todayStart || ts >= tomorrowStart);
   const shouldClearActiveSession =
@@ -2621,11 +3075,12 @@ async function clearTodayData() {
     sessions: [],
     activeSession: shouldClearActiveSession ? null : activeSession || null,
     sessionIntents: keptIntents,
+    sessionReflections: keptReflections,
     manualSessionStarts: keptManualStarts,
     lastUserActivityAt: shouldClearActiveSession ? Date.now() : lastUserActivityAt
   });
 
-  chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
+  safeRuntimeSignal({ type: "rebuildSessions" });
   setStatusText("clearDataStatus", "Today's dashboard history was cleared. Analytics data was kept.");
   await refresh();
 }
@@ -2635,11 +3090,13 @@ async function clearCurrentSessionData() {
     activeSession,
     visits = [],
     sessionIntents = [],
+    sessionReflections = [],
     manualSessionStarts = []
   } = await chrome.storage.local.get([
     "activeSession",
     "visits",
     "sessionIntents",
+    "sessionReflections",
     "manualSessionStarts"
   ]);
 
@@ -2651,6 +3108,7 @@ async function clearCurrentSessionData() {
   const sessionId = String(activeSession.id);
   const keptVisits = visits.filter((visit) => String(visit?.sessionId || "") !== sessionId);
   const keptIntents = sessionIntents.filter((intent) => String(intent?.sessionId || "") !== sessionId);
+  const keptReflections = sessionReflections.filter((entry) => String(entry?.sessionId || "") !== sessionId);
   const keptManualStarts = manualSessionStarts.filter((ts) => ts !== activeSession.startTime);
 
   await chrome.storage.local.set({
@@ -2658,11 +3116,12 @@ async function clearCurrentSessionData() {
     sessions: [],
     activeSession: null,
     sessionIntents: keptIntents,
+    sessionReflections: keptReflections,
     manualSessionStarts: keptManualStarts,
     lastUserActivityAt: Date.now()
   });
 
-  chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
+  safeRuntimeSignal({ type: "rebuildSessions" });
   setStatusText("clearDataStatus", "Current dashboard session was cleared. Analytics data was kept.");
   await refresh();
 }
@@ -2673,11 +3132,12 @@ async function clearAllData() {
     sessions: [],
     activeSession: null,
     sessionIntents: [],
+    sessionReflections: [],
     manualSessionStarts: [],
     lastUserActivityAt: Date.now()
   });
 
-  chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
+  safeRuntimeSignal({ type: "rebuildSessions" });
   setStatusText("clearDataStatus", "All dashboard history was cleared. Analytics data was kept.");
   await refresh();
 }
@@ -2689,6 +3149,7 @@ function renderDashboard(data) {
     sessions: data.sessions || [],
     analyticsSessions: data.analyticsSessions || [],
     visits: data.visits || [],
+    sessionReflections: data.sessionReflections || [],
     inactivityThresholdMinutes: thresholdMinutes,
     noGoalHourlyIntervalHours: normalizeNoGoalHourlyIntervalHours(data.noGoalHourlyIntervalHours),
     notificationPreferences: data.notificationPreferences || {
@@ -2698,7 +3159,8 @@ function renderDashboard(data) {
       noGoalHourly: true,
       sessionEnded: true
     },
-    assistantMessages: normalizeAssistantMessages(dashboardState.assistantMessages)
+    assistantMessages: normalizeAssistantMessages(dashboardState.assistantMessages),
+    overviewInsights: Array.isArray(dashboardState.overviewInsights) ? dashboardState.overviewInsights : []
   };
 
   const liveSessions = buildLiveSessions(
@@ -2709,22 +3171,28 @@ function renderDashboard(data) {
   const analyticsSessions = dashboardState.analyticsSessions.length
     ? dashboardState.analyticsSessions
     : liveSessions;
-  const today = computeTodayFromSessions(liveSessions);
+  const visibleSessions = liveSessions.filter(hasMeaningfulSessionActivity);
+  const visibleAnalyticsSessions = analyticsSessions.filter(hasMeaningfulSessionActivity);
+  const today = computeTodayFromSessions(visibleSessions);
 
   document.getElementById("todayTime").textContent = msToPretty(today.totalTimeMs);
 
   renderCurrentSession(dashboardState.activeSession, dashboardState.visits);
   renderCurrentSessionData(dashboardState.activeSession, dashboardState.visits);
   renderActivityChart(computeHourlyMinutes(today.todaySessions));
-  renderWeekChart(computeWeekBars(liveSessions));
+  renderWeekChart(computeWeekBars(visibleSessions));
   renderDistributionChart(today.timePerDomain);
-  renderSessionsList(liveSessions);
+  const assistantContext = buildAssistantContext(visibleSessions, visibleAnalyticsSessions, today);
+  dashboardState.assistantStarterPrompts = buildAssistantStarterPrompts(assistantContext);
+  renderOverviewInsights();
+  loadOverviewInsights(assistantContext).catch(() => {});
+  renderSessionsList(visibleSessions);
   renderTopSitesToday(today.timePerDomain, today.visitsPerDomain, today.latestUrlPerDomain);
-  renderHistoryList(liveSessions);
-  renderSequenceInsights(analyticsSessions);
-  renderExtendedSessionInsights(analyticsSessions);
-  renderTimeOfDayInsights(analyticsSessions);
-  renderFootprintExplorer(analyticsSessions.length ? analyticsSessions : liveSessions);
+  renderHistoryList(visibleSessions);
+  renderSequenceInsights(visibleAnalyticsSessions);
+  renderExtendedSessionInsights(visibleAnalyticsSessions);
+  renderTimeOfDayInsights(visibleAnalyticsSessions);
+  renderFootprintExplorer(visibleAnalyticsSessions.length ? visibleAnalyticsSessions : visibleSessions);
   renderSettings(thresholdMinutes);
   renderAssistant();
 }
@@ -2741,6 +3209,7 @@ async function refresh() {
     "analyticsSessions",
     "analyticsVisits",
     "visits",
+    "sessionReflections",
     "inactivityThresholdMinutes",
     "noGoalHourlyIntervalHours",
     "notificationPreferences"
@@ -2753,13 +3222,14 @@ async function refresh() {
   if ((visits.length && !sessions.length) || (analyticsVisits.length && !analyticsSessions.length)) {
     try {
       await new Promise((resolve) => {
-        chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => resolve());
+        safeRuntimeSignal({ type: "rebuildSessions" }, resolve);
       });
       const rebuilt = await chrome.storage.local.get([
         "activeSession",
         "sessions",
         "analyticsSessions",
         "visits",
+        "sessionReflections",
         "inactivityThresholdMinutes",
         "noGoalHourlyIntervalHours"
       ]);
@@ -2772,7 +3242,7 @@ async function refresh() {
 }
 
 async function stopCurrentSessionFromUi() {
-  const response = await chrome.runtime.sendMessage({ type: "stopCurrentSession" });
+  const response = await safeRuntimeMessage({ type: "stopCurrentSession" });
   if (response?.stopped) {
     await refresh();
     return;
@@ -2984,9 +3454,7 @@ document.querySelectorAll(".notificationTestBtn").forEach((button) => {
     const kind = button.dataset.notificationTest || "";
     setStatusText("notificationPreferencesStatus", "Sending preview notification...");
     try {
-      const response = await new Promise((resolve) => {
-        chrome.runtime.sendMessage({ type: "testNotificationPreview", kind }, resolve);
-      });
+      const response = await safeRuntimeMessage({ type: "testNotificationPreview", kind });
 
       if (response?.ok) {
         setStatusText("notificationPreferencesStatus", "Preview notification sent.");
@@ -2999,33 +3467,17 @@ document.querySelectorAll(".notificationTestBtn").forEach((button) => {
   });
 });
 
-document.querySelectorAll("[data-assistant-prompt]").forEach((button) => {
-  button.addEventListener("click", async () => {
-    const prompt = button.dataset.assistantPrompt || "";
-    const input = document.getElementById("assistantInput");
-    if (input) input.value = prompt;
-    await askAssistant(prompt);
-  });
-});
-
-document.getElementById("assistantThread").addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-assistant-prompt]");
-  if (!button) return;
-  const prompt = button.dataset.assistantPrompt || "";
-  const input = document.getElementById("assistantInput");
-  if (input) input.value = prompt;
-  await askAssistant(prompt);
-});
-
 document.getElementById("assistantSendBtn").addEventListener("click", async () => {
   const input = document.getElementById("assistantInput");
   const value = String(input?.value || "").trim();
   if (!value) return;
   if (input) input.value = "";
+  autoResizeAssistantInput();
   await askAssistant(value);
 });
 
 document.getElementById("assistantInput").addEventListener("input", () => {
+  autoResizeAssistantInput();
   renderAssistant();
 });
 
@@ -3034,6 +3486,24 @@ document.getElementById("assistantInput").addEventListener("keydown", async (eve
     event.preventDefault();
     document.getElementById("assistantSendBtn").click();
   }
+});
+
+document.addEventListener("click", async (event) => {
+  const assistantPromptButton = event.target.closest("[data-assistant-prompt]");
+  if (assistantPromptButton) {
+    const prompt = String(assistantPromptButton.dataset.assistantPrompt || "").trim();
+    if (prompt) {
+      await askAssistant(prompt);
+    }
+    return;
+  }
+
+  const button = event.target.closest("[data-overview-insight-prompt]");
+  if (!button) return;
+  const prompt = String(button.dataset.overviewInsightPrompt || "").trim();
+  if (!prompt) return;
+  setActiveTab("analytics");
+  await askAssistant(prompt);
 });
 
 document.getElementById("clearDataBtn").addEventListener("click", async () => {
@@ -3077,6 +3547,7 @@ document.querySelectorAll("[data-analytics-toggle]").forEach((button) => {
 setActiveTab("overview");
 refresh();
 scheduleRefreshRetries();
+autoResizeAssistantInput();
 
 window.addEventListener("focus", () => {
   refresh().catch(() => {});

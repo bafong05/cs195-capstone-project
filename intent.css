@@ -6,6 +6,12 @@
   color: #1b1f2f;
 }
 
+.intentPage.is-overrun #sessionNameSection,
+.intentPage.is-overrun #intentOptions,
+.intentPage.is-overrun #otherIntentSection {
+  display: none !important;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -18,7 +24,7 @@
 }
 
 .intentCard {
-  width: min(620px, 100%);
+  width: min(760px, 100%);
   padding: 14px 16px 16px;
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.96);
@@ -46,6 +52,13 @@
   margin: 8px 0 10px;
   font-size: 13px;
   color: #5f6373;
+}
+
+.intentError {
+  margin: 10px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c0395d;
 }
 
 .intentOptions {
@@ -119,9 +132,176 @@
   color: #7b8191;
 }
 
-@media (max-width: 640px) {
+.overrunSection {
+  margin-top: 14px;
+}
+
+.overrunSummary {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f8f3ff 0%, #fdfbff 100%);
+  border: 1px solid rgba(125, 52, 216, 0.14);
+  font-size: 14px;
+  line-height: 1.45;
+  color: #4f5063;
+}
+
+.overrunSummary strong {
+  color: #1b1f2f;
+}
+
+.overrunGroup + .overrunGroup {
+  margin-top: 14px;
+}
+
+.overrunLabel {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7d34d8;
+}
+
+.overrunLabel--subtle {
+  margin-top: 12px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #8b6cc3;
+}
+
+.overrunActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.overrunAction,
+.reflectionOption {
+  border: 2px solid rgba(17, 24, 39, 0.1);
+  border-radius: 16px;
+  background: #fff;
+  color: #1b1f2f;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  min-height: 52px;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.overrunAction:hover,
+.reflectionOption:hover {
+  border-color: rgba(125, 52, 216, 0.3);
+  box-shadow: 0 10px 22px rgba(125, 52, 216, 0.08);
+}
+
+.overrunAction.is-selected,
+.reflectionOption.is-selected {
+  border-color: rgba(125, 52, 216, 0.48);
+  background: #f6f0ff;
+  color: #6922ca;
+  box-shadow: 0 8px 18px rgba(125, 52, 216, 0.12);
+}
+
+.overrunAction--danger {
+  border-color: rgba(192, 57, 93, 0.18);
+}
+
+.overrunAction--danger:hover {
+  border-color: rgba(192, 57, 93, 0.3);
+  box-shadow: 0 10px 22px rgba(192, 57, 93, 0.08);
+}
+
+.reflectionOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.overrunOtherReason {
+  margin-top: 10px;
+}
+
+.overrunOtherReason--extend {
+  margin-top: 12px;
+}
+
+#overrunOtherReasonInput {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 2px solid rgba(17, 24, 39, 0.12);
+  border-radius: 16px;
+  background: #fff;
+  font-size: 14px;
+}
+
+#overrunOtherReasonInput::placeholder {
+  color: #7b8191;
+}
+
+#overrunOtherMinutesInput {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 2px solid rgba(17, 24, 39, 0.12);
+  border-radius: 16px;
+  background: #fff;
+  font-size: 14px;
+}
+
+#overrunOtherMinutesInput::placeholder {
+  color: #7b8191;
+}
+
+.reflectionOptions.is-disabled,
+.overrunOtherReason.is-disabled {
+  opacity: 0.48;
+  pointer-events: none;
+}
+
+.overrunSubmitRow {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.overrunSubmitButton {
+  min-width: 140px;
+  min-height: 52px;
+  border: 2px solid rgba(125, 52, 216, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #7d34d8 0%, #9b63ff 100%);
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  padding: 10px 18px;
+}
+
+.overrunSubmitButton:hover {
+  box-shadow: 0 12px 24px rgba(125, 52, 216, 0.16);
+}
+
+.overrunSubmitButton:disabled {
+  cursor: default;
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+@media (max-width: 560px) {
   .intentCard {
     padding: 14px;
     border-radius: 20px;
+  }
+
+  .overrunActions,
+  .reflectionOptions,
+  .intentOptions {
+    grid-template-columns: 1fr;
   }
 }

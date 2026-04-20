@@ -7,39 +7,50 @@
   </head>
 
   <body class="popup-min">
-    <h1 id="popupHeading">Current Session</h1>
+    <main class="popupInner">
+      <h1 id="popupHeading">Current Session</h1>
 
-    <div class="card popupSummary">
-      <div class="popupProgressWrap" id="popupProgressChart" aria-label="Current session progress"></div>
-    </div>
-
-    <div class="row popupActions">
-      <button id="openDashboard" type="button">Dashboard</button>
-      <button id="stopSession" type="button">Stop</button>
-      <button id="newSession" type="button" class="danger">New session</button>
-    </div>
-
-    <div id="intentChooser" class="chooserCard" hidden>
-      <div class="chooserTitle" id="chooserTitle">Set intended duration</div>
-      <div class="chooserOtherRow">
-        <input id="sessionNameInput" type="text" maxlength="80" placeholder="Session name (optional)" />
+      <div class="card popupSummary">
+        <div class="popupProgressWrap" id="popupProgressChart" aria-label="Current session progress"></div>
       </div>
-      <div class="chooserOptions">
-        <button class="intentOption" type="button" data-minutes="5">Real quick &lt;5 min</button>
-        <button class="intentOption" type="button" data-minutes="15">15 min</button>
-        <button class="intentOption" type="button" data-minutes="30">30 min</button>
-        <button class="intentOption" type="button" data-minutes="45">45 min</button>
-        <button class="intentOption" type="button" data-minutes="60">60 min</button>
-        <button class="intentOption" type="button" data-no-goal="true">No goal</button>
+
+      <div id="popupRiskCard" class="popupRiskCard" hidden>
+        <div class="popupRiskLabelRow">
+          <span class="popupRiskEyebrow">Overrun risk</span>
+          <span id="popupRiskLevel" class="popupRiskLevel">Low</span>
+        </div>
+        <div id="popupRiskTitle" class="popupRiskTitle"></div>
+        <div id="popupRiskReason" class="popupRiskReason"></div>
       </div>
-      <div class="chooserOtherRow">
-        <button id="otherIntentBtn" type="button" class="otherIntentBtn">Other</button>
-        <div id="otherIntentInputWrap" class="otherIntentInputWrap" hidden>
-          <input id="otherIntentInput" type="number" min="1" step="1" placeholder="Minutes" />
-          <button id="applyOtherIntent" type="button">Set</button>
+
+      <div class="row popupActions">
+        <button id="openDashboard" type="button">Dashboard</button>
+        <button id="stopSession" type="button">Stop</button>
+        <button id="newSession" type="button" class="danger">New session</button>
+      </div>
+
+      <div id="intentChooser" class="chooserCard" hidden>
+        <div class="chooserTitle" id="chooserTitle">Set intended duration</div>
+        <div class="chooserOtherRow">
+          <input id="sessionNameInput" type="text" maxlength="80" placeholder="Session name (optional)" />
+        </div>
+        <div class="chooserOptions">
+          <button class="intentOption" type="button" data-minutes="5">Real quick &lt;5 min</button>
+          <button class="intentOption" type="button" data-minutes="15">15 min</button>
+          <button class="intentOption" type="button" data-minutes="30">30 min</button>
+          <button class="intentOption" type="button" data-minutes="45">45 min</button>
+          <button class="intentOption" type="button" data-minutes="60">60 min</button>
+          <button class="intentOption" type="button" data-no-goal="true">No goal</button>
+        </div>
+        <div class="chooserOtherRow">
+          <button id="otherIntentBtn" type="button" class="otherIntentBtn">Other</button>
+          <div id="otherIntentInputWrap" class="otherIntentInputWrap" hidden>
+            <input id="otherIntentInput" type="number" min="1" step="1" placeholder="Minutes" />
+            <button id="applyOtherIntent" type="button">Set</button>
+          </div>
         </div>
       </div>
-    </div>
+    </main>
     <script src="session_helpers.js"></script>
     <script src="popup.js"></script>
   </body>

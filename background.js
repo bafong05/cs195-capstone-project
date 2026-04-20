@@ -3,6 +3,23 @@ let inactivityThresholdMs = DEFAULT_INACTIVITY_THRESHOLD_MINUTES * 60 * 1000;
 let browserIdleState = "active";
 let chromeAppFocused = true;
 
+function isIgnorableServiceWorkerError(errorLike) {
+  const text = String(
+    errorLike?.message ??
+    errorLike?.reason?.message ??
+    errorLike?.reason ??
+    errorLike ??
+    ""
+  );
+  return text.includes("No SW") || text.includes("Receiving end does not exist");
+}
+
+self.addEventListener("unhandledrejection", (event) => {
+  if (isIgnorableServiceWorkerError(event)) {
+    event.preventDefault();
+  }
+});
+
 function normalizeInactivityThresholdMinutes(value) {
   const minutes = Number(value);
   if (!Number.isFinite(minutes)) return DEFAULT_INACTIVITY_THRESHOLD_MINUTES;
@@ -50,6 +67,10 @@ let logVisitChain = Promise.resolve();
 let autoIntentPromptChain = Promise.resolve();
 let autoIntentPopupWindowId = null;
 let autoIntentPopupTabId = null;
+let overrunPromptChain = Promise.resolve();
+let overrunPopupWindowId = null;
+let overrunPopupTabId = null;
+let overrunReopenTimer = null;
 const SESSION_MONITOR_ALARM = "session-monitor";
 const SESSION_OVERRUN_ALARM = "session-overrun-check";
 const SESSION_GOAL_REMINDER_ALARM = "session-goal-reminder";
@@ -57,12 +78,17 @@ const SESSION_ENDING_SOON_ALARM = "session-ending-soon";
 const NO_GOAL_REMINDER_DELAY_MS = 10 * 1000;
 const DEFAULT_NO_GOAL_HOURLY_INTERVAL_HOURS = 1;
 const NO_GOAL_INTERVAL_OPTIONS_HOURS = [0.25, 0.5, 1, 2];
-const DEPLOYED_AI_ASSISTANT_BACKEND_URL = "https://screen-time-momentum-ai.onrender.com/analytics/ai";
+const DEPLOYED_AI_ASSISTANT_BACKEND_URL = "";
 const LOCAL_AI_ASSISTANT_BACKEND_URL = "http://127.0.0.1:8000/analytics/ai";
 const REPEAT_VISIT_COLLAPSE_WINDOW_MS = 45 * 1000;
 
+function getAiAssistantBackendBaseUrl() {
+  const backendUrl = DEPLOYED_AI_ASSISTANT_BACKEND_URL || LOCAL_AI_ASSISTANT_BACKEND_URL;
+  return backendUrl.replace(/\/analytics\/ai$/, "");
+}
+
 function getAiAssistantBackendUrl() {
-  return DEPLOYED_AI_ASSISTANT_BACKEND_URL || LOCAL_AI_ASSISTANT_BACKEND_URL;
+  return `${getAiAssistantBackendBaseUrl()}/analytics/ai`;
 }
 
 function isIdleStateInactive(state) {
@@ -141,12 +167,20 @@ async function rebuildSessionStore({
     if (!intent) return session;
 
     const sessionName = normalizeSessionName(intent.sessionName);
+    const initialIntendedMinutes =
+      intent.initialIntendedMinutes != null
+        ? Number(intent.initialIntendedMinutes)
+        : (intent.intendedMinutes == null ? null : Number(intent.intendedMinutes));
+    const totalExtendedMinutes = Math.max(0, Number(intent.totalExtendedMinutes || 0));
+
     if (intent.intendedMinutes == null) {
       return {
         ...session,
         metrics: {
           ...metrics,
-          sessionName
+          sessionName,
+          initialIntendedMinutes,
+          totalExtendedMinutes
         }
       };
     }
@@ -161,6 +195,8 @@ async function rebuildSessionStore({
       metrics: {
         ...metrics,
         sessionName,
+        initialIntendedMinutes,
+        totalExtendedMinutes,
         intendedMinutes: intent.intendedMinutes,
         intendedMs,
         overrunMs,
@@ -239,7 +275,9 @@ function shouldIgnoreUrl(url) {
       "blob:",
       "javascript:",
       "about:",
-      "devtools:"
+      "devtools:",
+      "chrome:",
+      "chrome-search:"
     ].includes(parsed.protocol);
   } catch {
     return true;
@@ -321,6 +359,65 @@ async function ensureSingleAutoIntentPopup(createPopup) {
   }).catch(() => false);
 }
 
+async function findExistingOverrunPopup() {
+  const popupBaseUrl = chrome.runtime.getURL("intent.html?mode=overrun");
+
+  if (overrunPopupWindowId != null) {
+    try {
+      const existingWindow = await chrome.windows.get(overrunPopupWindowId, { populate: true });
+      const existingTab = (existingWindow.tabs || []).find((tab) => {
+        if (overrunPopupTabId != null && tab.id === overrunPopupTabId) return true;
+        return Boolean(tab?.url && tab.url.startsWith(popupBaseUrl));
+      });
+      if (existingTab?.id && existingWindow?.id != null) {
+        overrunPopupWindowId = existingWindow.id;
+        overrunPopupTabId = existingTab.id;
+        return { windowId: existingWindow.id, tabId: existingTab.id };
+      }
+    } catch {
+      overrunPopupWindowId = null;
+      overrunPopupTabId = null;
+    }
+  }
+
+  try {
+    const windows = await chrome.windows.getAll({ populate: true });
+    for (const win of windows) {
+      for (const tab of win.tabs || []) {
+        if (!tab?.url) continue;
+        if (tab.url.startsWith(popupBaseUrl)) {
+          overrunPopupWindowId = win.id ?? null;
+          overrunPopupTabId = tab.id ?? null;
+          return { windowId: win.id, tabId: tab.id };
+        }
+      }
+    }
+  } catch {}
+
+  overrunPopupWindowId = null;
+  overrunPopupTabId = null;
+  return null;
+}
+
+async function ensureSingleOverrunPopup(createPopup) {
+  return overrunPromptChain = overrunPromptChain.then(async () => {
+    const existing = await findExistingOverrunPopup();
+    if (existing?.windowId) {
+      try {
+        await chrome.windows.update(existing.windowId, { focused: true });
+      } catch {}
+      return false;
+    }
+
+    const created = await createPopup();
+    if (created?.id != null) {
+      overrunPopupWindowId = created.id;
+      overrunPopupTabId = created.tabs?.[0]?.id ?? null;
+    }
+    return true;
+  }).catch(() => false);
+}
+
 function toDomain(url) {
   try {
     const parsed = new URL(url);
@@ -351,9 +448,32 @@ function computeSessionMetrics(visits) {
   if (!visits.length) return null;
   const start = visits[0].time;
   const lastVisit = visits[visits.length - 1];
+  const getVisitInteractionWindow = (visit) => {
+    if (!visit?.hadInteraction) {
+      return {
+        start: Number(visit?.time || 0),
+        end: Number(visit?.time || 0)
+      };
+    }
+
+    const interactionStart = Math.max(
+      Number(visit?.time || 0),
+      Number(visit?.firstInteractionTime || visit?.time || 0)
+    );
+    const interactionEnd = Math.max(
+      interactionStart,
+      Number(visit?.lastActiveTime || visit?.firstInteractionTime || visit?.time || 0)
+    );
+
+    return {
+      start: interactionStart,
+      end: interactionEnd
+    };
+  };
+  const lastVisitWindow = getVisitInteractionWindow(lastVisit);
   const end = Math.max(
     lastVisit.time,
-    Number(lastVisit.lastActiveTime || lastVisit.firstInteractionTime || lastVisit.time)
+    Number(lastVisitWindow.end || lastVisit.time)
   );
   const durationMs = Math.max(0, end - start);
 
@@ -364,13 +484,11 @@ function computeSessionMetrics(visits) {
   for (let i = 0; i < visits.length; i++) {
     const curr = visits[i];
     const next = visits[i + 1];
-    const currRecordedEnd = Math.max(
-      curr.time,
-      Number(curr.lastActiveTime || curr.firstInteractionTime || curr.time)
-    );
-    const dt = next
-      ? Math.max(0, next.time - curr.time)
-      : Math.max(0, currRecordedEnd - curr.time);
+    const visitStart = Number(curr?.time || 0);
+    const inferredEnd = next
+      ? Number(next.time || visitStart)
+      : end;
+    const dt = Math.max(0, inferredEnd - visitStart);
     const key = curr.domain || toDomain(curr.url);
     timePerDomain[key] = (timePerDomain[key] || 0) + dt;
   }
@@ -444,14 +562,15 @@ async function maybeNotifySessionOverrun(activeSession) {
   if (isIdleStateInactive(await refreshIdleState()) && !videoPlaying) return;
 
   const sessionId = String(activeSession.id);
-  if (activeSession.overrunNotificationSent) {
+  const currentIntendedMinutes = Number(activeSession.intendedMinutes || 0);
+  if (currentIntendedMinutes <= 0) return;
+
+  if (Number(activeSession.overrunPromptPendingForMinutes || 0) === currentIntendedMinutes) {
     lastOverrunNotificationSessionId = sessionId;
     return;
   }
-  if (lastOverrunNotificationSessionId === sessionId) return;
 
-  const intendedMs = Number(activeSession.intendedMinutes || 0) * 60 * 1000;
-  if (intendedMs <= 0) return;
+  const intendedMs = currentIntendedMinutes * 60 * 1000;
 
   const now = Date.now();
   const sessionStart = Number(activeSession.startTime || now);
@@ -460,14 +579,87 @@ async function maybeNotifySessionOverrun(activeSession) {
   if (elapsedMs <= intendedMs) return;
 
   try {
+    const updates = {
+      activeSession: {
+        ...activeSession,
+        overrunPromptPendingForMinutes: currentIntendedMinutes
+      }
+    };
+
+    const { analyticsActiveSession } = await chrome.storage.local.get(["analyticsActiveSession"]);
+    if (analyticsActiveSession?.id === activeSession.id) {
+      updates.analyticsActiveSession = {
+        ...analyticsActiveSession,
+        overrunPromptPendingForMinutes: currentIntendedMinutes
+      };
+    }
+
+    await chrome.storage.local.set(updates);
+
     await createBasicNotification(
       `session-overrun-${sessionId}`,
-      "Over intended time",
-      "You have now exceeded your intended browsing duration."
+      "Session over intended time",
+      "Choose whether to extend your time or end the session."
     );
+
+    const popupUrl = chrome.runtime.getURL("intent.html?mode=overrun");
+    const opened = await ensureSingleOverrunPopup(async () => {
+      return chrome.windows.create({
+        url: popupUrl,
+        type: "popup",
+        width: 760,
+        height: 760,
+        focused: true
+      });
+    });
+
+    if (!opened) {
+      lastOverrunNotificationSessionId = sessionId;
+      return;
+    }
+
     lastOverrunNotificationSessionId = sessionId;
-    await markSessionNotificationSent(sessionId, "overrunNotificationSent");
-  } catch {}
+  } catch {
+    try {
+      await createBasicNotification(
+        `session-overrun-${sessionId}`,
+        "Over intended time",
+        "You have now exceeded your intended browsing duration."
+      );
+      lastOverrunNotificationSessionId = sessionId;
+    } catch {}
+  }
+}
+
+async function reopenOverrunPopupIfNeeded(delayMs = 250) {
+  clearTimeout(overrunReopenTimer);
+  overrunReopenTimer = setTimeout(async () => {
+    try {
+      const { activeSession } = await chrome.storage.local.get(["activeSession"]);
+      if (!activeSession?.id || activeSession?.intendedMinutes == null) return;
+      const intendedMinutes = Number(activeSession.intendedMinutes || 0);
+      if (intendedMinutes <= 0) return;
+      if (Number(activeSession.overrunPromptPendingForMinutes || 0) !== intendedMinutes) return;
+
+      const now = Date.now();
+      const sessionStart = Number(activeSession.startTime || now);
+      if (Math.max(0, now - sessionStart) <= intendedMinutes * 60 * 1000) return;
+
+      const existing = await findExistingOverrunPopup();
+      if (existing?.windowId) return;
+
+      const popupUrl = chrome.runtime.getURL("intent.html?mode=overrun");
+      const created = await chrome.windows.create({
+        url: popupUrl,
+        type: "popup",
+        width: 760,
+        height: 760,
+        focused: true
+      });
+      overrunPopupWindowId = created?.id ?? null;
+      overrunPopupTabId = created?.tabs?.[0]?.id ?? null;
+    } catch {}
+  }, delayMs);
 }
 
 function groupIntoSessions(visits) {
@@ -539,14 +731,59 @@ async function rebuildAnalyticsSessions() {
 async function stopCurrentSession() {
   const {
     activeSession,
-    analyticsActiveSession
-  } = await chrome.storage.local.get(["activeSession", "analyticsActiveSession"]);
+    analyticsActiveSession,
+    visits = [],
+    analyticsVisits = []
+  } = await chrome.storage.local.get([
+    "activeSession",
+    "analyticsActiveSession",
+    "visits",
+    "analyticsVisits"
+  ]);
 
   if (!activeSession && !analyticsActiveSession) {
     return { ok: true, stopped: false };
   }
 
+  const synchronizeFinalInteraction = (list, session) => {
+    if (!Array.isArray(list) || !session?.id) return list;
+
+    const finalInteractionTs = Math.max(
+      Number(session?.lastEventTime || 0),
+      Number(session?.startTime || 0)
+    );
+    if (!finalInteractionTs) return list;
+
+    const next = list.slice();
+    for (let i = next.length - 1; i >= 0; i -= 1) {
+      const visit = next[i];
+      if (String(visit?.sessionId || "") !== String(session.id)) continue;
+
+      const nextVisit = {
+        ...visit,
+        hadInteraction: true,
+        firstInteractionTime: Math.max(
+          Number(visit?.time || 0),
+          Number(visit?.firstInteractionTime || visit?.time || 0)
+        ),
+        lastActiveTime: Math.max(
+          Number(visit?.lastActiveTime || 0),
+          finalInteractionTs
+        )
+      };
+      next[i] = nextVisit;
+      return next;
+    }
+
+    return list;
+  };
+
+  const syncedVisits = synchronizeFinalInteraction(visits, activeSession);
+  const syncedAnalyticsVisits = synchronizeFinalInteraction(analyticsVisits, analyticsActiveSession || activeSession);
+
   await chrome.storage.local.set({
+    visits: syncedVisits,
+    analyticsVisits: syncedAnalyticsVisits,
     activeSession: null,
     analyticsActiveSession: null,
     pendingManualSession: null,
@@ -610,8 +847,8 @@ async function promptForAutoSessionIntent(sessionId) {
       return chrome.windows.create({
         url: popupUrl,
         type: "popup",
-        width: 640,
-        height: 560,
+        width: 760,
+        height: 620,
         focused: true
       });
     });
@@ -663,8 +900,8 @@ async function promptForPendingAutoIntent() {
       return chrome.windows.create({
         url: popupUrl,
         type: "popup",
-        width: 640,
-        height: 560,
+        width: 760,
+        height: 620,
         focused: true
       });
     });
@@ -833,6 +1070,17 @@ async function heartbeatActiveSession(ts) {
   await maybeNotifyMissingGoal(updates.activeSession || activeSession);
 }
 
+async function isForegroundTab(tabId) {
+  if (!tabId || !chromeAppFocused) return false;
+
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return Boolean(tab?.active && tab?.windowId && tab.windowId !== chrome.windows.WINDOW_ID_NONE);
+  } catch {
+    return false;
+  }
+}
+
 async function resumeSessionFromForegroundActivity(tab, ts = Date.now()) {
   const url = tab?.url || "";
   if (!url || shouldIgnoreUrl(url) || shouldIgnoreExtensionPage(url)) return false;
@@ -911,9 +1159,12 @@ async function logVisit(url, source, tabId = null, favIconUrl = "") {
 
     if (shouldCollapseRepeatVisit) {
       const nextVisits = visits.slice();
+      const shouldTreatReloadAsPassive = source === "page-reload";
       nextVisits[latestVisitIndex] = {
         ...latestVisit,
-        lastActiveTime: now,
+        lastActiveTime: shouldTreatReloadAsPassive
+          ? latestVisit.lastActiveTime
+          : now,
         favIconUrl: favIconUrl || latestVisit.favIconUrl || ""
       };
 
@@ -923,7 +1174,9 @@ async function logVisit(url, source, tabId = null, favIconUrl = "") {
         const latestAnalyticsVisit = nextAnalyticsVisits[latestAnalyticsIndex];
         nextAnalyticsVisits[latestAnalyticsIndex] = {
           ...latestAnalyticsVisit,
-          lastActiveTime: now,
+          lastActiveTime: shouldTreatReloadAsPassive
+            ? latestAnalyticsVisit.lastActiveTime
+            : now,
           favIconUrl: favIconUrl || latestAnalyticsVisit.favIconUrl || ""
         };
       }
@@ -932,7 +1185,9 @@ async function logVisit(url, source, tabId = null, favIconUrl = "") {
         visits: nextVisits,
         analyticsVisits: nextAnalyticsVisits
       });
-      await heartbeatActiveSession(now);
+      if (!shouldTreatReloadAsPassive) {
+        await heartbeatActiveSession(now);
+      }
       await rebuildSessions();
       await rebuildAnalyticsSessions();
       return;
@@ -966,6 +1221,15 @@ async function logVisit(url, source, tabId = null, favIconUrl = "") {
         visitCount: 0,
         intendedMinutes:
           pendingManualSession.intendedMinutes == null ? null : Number(pendingManualSession.intendedMinutes),
+        initialIntendedMinutes:
+          pendingManualSession.initialIntendedMinutes == null
+            ? (
+                pendingManualSession.intendedMinutes == null
+                  ? null
+                  : Number(pendingManualSession.intendedMinutes)
+              )
+            : Number(pendingManualSession.initialIntendedMinutes),
+        totalExtendedMinutes: Math.max(0, Number(pendingManualSession.totalExtendedMinutes || 0)),
         sessionName: normalizeSessionName(pendingManualSession.sessionName || ""),
         goalSelectionMade: true,
         autoIntentPrompted: false
@@ -1175,6 +1439,42 @@ async function maybeNotifySessionEnded(activeSession) {
   } catch {}
 }
 
+async function recordSessionEndReflection(activeSession, reason = "inactivity", ts = Date.now()) {
+  if (!activeSession?.id) return;
+
+  const { sessionReflections = [] } = await chrome.storage.local.get(["sessionReflections"]);
+  const sessionId = String(activeSession.id);
+  const existing = Array.isArray(sessionReflections)
+    ? sessionReflections.find((entry) =>
+        String(entry?.sessionId || "") === sessionId &&
+        entry?.type === "session-ended"
+      )
+    : null;
+
+  if (existing) return;
+
+  const nextReflections = Array.isArray(sessionReflections) ? sessionReflections.slice() : [];
+  nextReflections.push({
+    sessionId,
+    timestamp: ts,
+    type: "session-ended",
+    action: reason === "inactivity" ? "inactive-end" : "session-ended",
+    reflection:
+      reason === "inactivity"
+        ? "Ended due to inactivity"
+        : "Session ended",
+    lastActivityAt: Math.max(
+      Number(activeSession?.lastEventTime || 0),
+      Number(activeSession?.startTime || 0)
+    ),
+    endedAt: ts
+  });
+
+  await chrome.storage.local.set({
+    sessionReflections: nextReflections
+  });
+}
+
 async function runSessionMonitorTick() {
   const now = Date.now();
   const idleState = await refreshIdleState();
@@ -1191,6 +1491,7 @@ async function runSessionMonitorTick() {
 
   if (active) {
     if (browserInactive && !videoPlaying) {
+      await recordSessionEndReflection(active, "inactivity", now);
       await maybeNotifySessionEnded(active);
       updates.activeSession = null;
       updates.pendingAutoResume = null;
@@ -1305,12 +1606,22 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     autoIntentPopupTabId = null;
     autoIntentPopupWindowId = null;
   }
+  if (overrunPopupTabId === tabId) {
+    overrunPopupTabId = null;
+    overrunPopupWindowId = null;
+    reopenOverrunPopupIfNeeded();
+  }
 });
 
 chrome.windows.onRemoved.addListener((windowId) => {
   if (autoIntentPopupWindowId === windowId) {
     autoIntentPopupWindowId = null;
     autoIntentPopupTabId = null;
+  }
+  if (overrunPopupWindowId === windowId) {
+    overrunPopupWindowId = null;
+    overrunPopupTabId = null;
+    reopenOverrunPopupIfNeeded();
   }
 });
 
@@ -1326,6 +1637,10 @@ chrome.webNavigation.onCommitted.addListener(async (details) => {
   else if (details.transitionType === "reload") source = "page-reload";
   else if (details.transitionType === "auto_bookmark") source = "bookmark-navigation";
   else if (details.transitionType === "generated") source = "address-bar-search";
+
+  // Treat passive page reloads as noise. They commonly come from apps that
+  // auto-refresh themselves and should not create or extend browsing activity.
+  if (source === "page-reload") return;
 
   let favIconUrl = "";
   try {
@@ -1458,6 +1773,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     browserIdleState = "active";
     (async () => {
       try {
+        const isForeground = await isForegroundTab(sender?.tab?.id);
+        if (!isForeground) {
+          sendResponse?.({ ok: true, ignored: true });
+          return;
+        }
         const resumed = await resumeSessionFromForegroundActivity(sender?.tab, ts);
         await setLastUserActivity(ts);
         if (!resumed) {
@@ -1475,6 +1795,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "videoStatus") {
     (async () => {
       try {
+        const isForeground = await isForegroundTab(sender?.tab?.id);
+        if (!isForeground) {
+          sendResponse?.({ ok: true, ignored: true });
+          return;
+        }
         videoPlaying = msg.playing;
         if (msg.playing) {
           browserIdleState = "active";
@@ -1523,6 +1848,265 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === "getOverrunPromptState") {
+    chrome.storage.local.get(["activeSession"]).then(({ activeSession }) => {
+      if (!activeSession?.id || activeSession?.intendedMinutes == null) {
+        sendResponse({ ok: false, error: "No active overrun session." });
+        return;
+      }
+
+      const now = Date.now();
+      const startTime = Number(activeSession.startTime || now);
+      const intendedMinutes = Number(activeSession.intendedMinutes || 0);
+      const elapsedMs = Math.max(0, now - startTime);
+      sendResponse({
+        ok: true,
+        session: {
+          id: activeSession.id,
+          sessionName: normalizeSessionName(activeSession.sessionName || ""),
+          intendedMinutes,
+          elapsedMs,
+          overrunMinutes: Math.max(0, Math.round((elapsedMs - intendedMinutes * 60 * 1000) / 60000))
+        }
+      });
+    }).catch((error) => sendResponse({ ok: false, error: String(error) }));
+    return true;
+  }
+
+  if (msg.type === "dismissOverrunPrompt") {
+    (async () => {
+      try {
+        overrunPopupWindowId = null;
+        overrunPopupTabId = null;
+        await reopenOverrunPopupIfNeeded();
+        sendResponse({ ok: true });
+      } catch (error) {
+        sendResponse({ ok: false, error: String(error) });
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === "applyOverrunDecision") {
+    (async () => {
+      try {
+        const action = String(msg.action || "").trim();
+        const reflection = String(msg.reflection || "").trim();
+        const extensionMinutes = Number(msg.extensionMinutes || 0);
+        if (!action) {
+          sendResponse({ ok: false, error: "Missing overrun action." });
+          return;
+        }
+        if (!reflection) {
+          sendResponse({ ok: false, error: "Choose a reflection first." });
+          return;
+        }
+
+        const {
+          activeSession,
+          analyticsActiveSession,
+          sessionIntents = [],
+          analyticsSessionIntents = [],
+          sessionReflections = []
+        } = await chrome.storage.local.get([
+          "activeSession",
+          "analyticsActiveSession",
+          "sessionIntents",
+          "analyticsSessionIntents",
+          "sessionReflections"
+        ]);
+
+        if (!activeSession?.id) {
+          sendResponse({ ok: false, error: "No active session to update." });
+          return;
+        }
+
+        const now = Date.now();
+        const nextReflections = Array.isArray(sessionReflections) ? sessionReflections.slice() : [];
+        nextReflections.push({
+          sessionId: String(activeSession.id),
+          timestamp: now,
+          type: "overrun-decision",
+          action,
+          reflection,
+          extensionMinutes: action === "extend" ? extensionMinutes : 0
+        });
+
+        const updates = {
+          sessionReflections: nextReflections
+        };
+
+        const upsertIntent = (list, nextMinutes, sessionName) => {
+          const next = Array.isArray(list) ? list.slice() : [];
+          const index = next.findIndex((intent) => String(intent?.sessionId || "") === String(activeSession.id));
+          const existing = index >= 0 ? next[index] : null;
+          const value = {
+            sessionId: String(activeSession.id),
+            intendedMinutes: nextMinutes,
+            sessionName: normalizeSessionName(sessionName || ""),
+            initialIntendedMinutes:
+              existing?.initialIntendedMinutes != null
+                ? Number(existing.initialIntendedMinutes)
+                : (
+                    activeSession.initialIntendedMinutes != null
+                      ? Number(activeSession.initialIntendedMinutes)
+                      : (
+                          activeSession.intendedMinutes == null
+                            ? null
+                            : Number(activeSession.intendedMinutes)
+                        )
+                  ),
+            totalExtendedMinutes: Math.max(
+              0,
+              Number(existing?.totalExtendedMinutes ?? activeSession.totalExtendedMinutes ?? 0)
+            ),
+            startTime: Number(existing?.startTime || activeSession.startTime || Date.now())
+          };
+          if (index >= 0) {
+            next[index] = value;
+          } else {
+            next.push(value);
+          }
+          return next;
+        };
+
+        if (action === "extend") {
+          const baseMinutes = Number(activeSession.intendedMinutes || 0);
+          const addedMinutes = Math.max(1, extensionMinutes);
+          const nextMinutes = baseMinutes + addedMinutes;
+          const nextTotalExtendedMinutes = Math.max(
+            0,
+            Number(activeSession.totalExtendedMinutes || 0)
+          ) + addedMinutes;
+          updates.activeSession = {
+            ...activeSession,
+            intendedMinutes: nextMinutes,
+            initialIntendedMinutes:
+              activeSession.initialIntendedMinutes != null
+                ? Number(activeSession.initialIntendedMinutes)
+                : baseMinutes,
+            totalExtendedMinutes: nextTotalExtendedMinutes,
+            overrunPromptPendingForMinutes: null,
+            overrunNotificationSent: false,
+            endingSoonNotificationSent: false
+          };
+          if (analyticsActiveSession?.id === activeSession.id) {
+            updates.analyticsActiveSession = {
+              ...analyticsActiveSession,
+              intendedMinutes: nextMinutes,
+              initialIntendedMinutes:
+                analyticsActiveSession.initialIntendedMinutes != null
+                  ? Number(analyticsActiveSession.initialIntendedMinutes)
+                  : (
+                      activeSession.initialIntendedMinutes != null
+                        ? Number(activeSession.initialIntendedMinutes)
+                        : baseMinutes
+                    ),
+              totalExtendedMinutes: Math.max(
+                0,
+                Number(
+                  analyticsActiveSession.totalExtendedMinutes ??
+                  nextTotalExtendedMinutes
+                )
+              ),
+              overrunPromptPendingForMinutes: null,
+              overrunNotificationSent: false,
+              endingSoonNotificationSent: false
+            };
+          }
+          updates.sessionIntents = upsertIntent(
+            sessionIntents.map((intent) => (
+              String(intent?.sessionId || "") === String(activeSession.id)
+                ? {
+                    ...intent,
+                    totalExtendedMinutes: Math.max(0, Number(intent?.totalExtendedMinutes || 0)) + addedMinutes
+                  }
+                : intent
+            )),
+            nextMinutes,
+            activeSession.sessionName || ""
+          );
+          updates.analyticsSessionIntents = upsertIntent(
+            analyticsSessionIntents.map((intent) => (
+              String(intent?.sessionId || "") === String(activeSession.id)
+                ? {
+                    ...intent,
+                    totalExtendedMinutes: Math.max(0, Number(intent?.totalExtendedMinutes || 0)) + addedMinutes
+                  }
+                : intent
+            )),
+            nextMinutes,
+            activeSession.sessionName || ""
+          );
+          await chrome.storage.local.set(updates);
+          scheduleActiveSessionAlarms(updates.activeSession);
+          sendResponse({ ok: true, action: "extend", intendedMinutes: nextMinutes });
+          return;
+        }
+
+        if (action === "no-goal") {
+          updates.activeSession = {
+            ...activeSession,
+            intendedMinutes: null,
+            initialIntendedMinutes:
+              activeSession.initialIntendedMinutes != null
+                ? Number(activeSession.initialIntendedMinutes)
+                : null,
+            totalExtendedMinutes: Math.max(0, Number(activeSession.totalExtendedMinutes || 0)),
+            goalSelectionMade: true,
+            overrunPromptPendingForMinutes: null,
+            overrunNotificationSent: false,
+            endingSoonNotificationSent: false
+          };
+          if (analyticsActiveSession?.id === activeSession.id) {
+            updates.analyticsActiveSession = {
+              ...analyticsActiveSession,
+              intendedMinutes: null,
+              initialIntendedMinutes:
+                analyticsActiveSession.initialIntendedMinutes != null
+                  ? Number(analyticsActiveSession.initialIntendedMinutes)
+                  : (
+                      activeSession.initialIntendedMinutes != null
+                        ? Number(activeSession.initialIntendedMinutes)
+                        : null
+                    ),
+              totalExtendedMinutes: Math.max(
+                0,
+                Number(
+                  analyticsActiveSession.totalExtendedMinutes ??
+                  activeSession.totalExtendedMinutes ??
+                  0
+                )
+              ),
+              goalSelectionMade: true,
+              overrunPromptPendingForMinutes: null,
+              overrunNotificationSent: false,
+              endingSoonNotificationSent: false
+            };
+          }
+          updates.sessionIntents = upsertIntent(sessionIntents, null, activeSession.sessionName || "");
+          updates.analyticsSessionIntents = upsertIntent(analyticsSessionIntents, null, activeSession.sessionName || "");
+          await chrome.storage.local.set(updates);
+          scheduleActiveSessionAlarms(updates.activeSession);
+          sendResponse({ ok: true, action: "no-goal" });
+          return;
+        }
+
+        if (action === "end") {
+          await chrome.storage.local.set(updates);
+          await stopCurrentSession();
+          sendResponse({ ok: true, action: "end" });
+          return;
+        }
+
+        sendResponse({ ok: false, error: "Unsupported overrun action." });
+      } catch (error) {
+        sendResponse({ ok: false, error: String(error) });
+      }
+    })();
+    return true;
+  }
+
   if (msg.type === "askAnalyticsAssistant") {
     (async () => {
       try {
@@ -1564,6 +2148,41 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({
           ok: false,
           error: `Could not reach the AI assistant backend at ${backendUrl}.`
+        });
+      }
+    })();
+
+    return true;
+  }
+
+  if (msg.type === "getOverviewInsights") {
+    (async () => {
+      try {
+        const response = await fetch(`${getAiAssistantBackendBaseUrl()}/analytics/insights`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            context: msg.context || {}
+          })
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const apiError = payload?.detail || payload?.error || `Insights backend failed (${response.status})`;
+          sendResponse({ ok: false, error: apiError });
+          return;
+        }
+
+        sendResponse({
+          ok: true,
+          insights: Array.isArray(payload?.insights) ? payload.insights : []
+        });
+      } catch {
+        sendResponse({
+          ok: false,
+          error: `Could not reach the AI insights backend at ${getAiAssistantBackendBaseUrl()}/analytics/insights.`
         });
       }
     })();

@@ -1,14 +1,28 @@
 (function () {
+  function safeBackgroundSignal(message) {
+    try {
+      chrome.runtime.sendMessage(message, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch {}
+  }
+
   function normalizeSessionName(value) {
     return String(value || "").trim().replace(/\s+/g, " ").slice(0, 80);
   }
 
-  function buildIntentRecord(sessionId, minutes, sessionName) {
+  function buildIntentRecord(sessionId, minutes, sessionName, extras = {}) {
     if (minutes == null && !sessionName) return null;
     return {
       sessionId,
       intendedMinutes: minutes,
-      sessionName
+      sessionName,
+      initialIntendedMinutes:
+        extras.initialIntendedMinutes != null
+          ? Number(extras.initialIntendedMinutes)
+          : (minutes == null ? null : Number(minutes)),
+      totalExtendedMinutes: Math.max(0, Number(extras.totalExtendedMinutes || 0)),
+      startTime: extras.startTime != null ? Number(extras.startTime) : undefined
     };
   }
 
@@ -50,6 +64,8 @@
         uniqueDomains: domain && domain !== "unknown" ? [domain] : [],
         visitCount: 1,
         intendedMinutes: minutes,
+        initialIntendedMinutes: minutes == null ? null : Number(minutes),
+        totalExtendedMinutes: 0,
         sessionName: normalizedName,
         goalSelectionMade: true,
         autoIntentPrompted: false
@@ -68,7 +84,11 @@
       };
 
       const { visits = [], analyticsVisits = [] } = await chrome.storage.local.get(["visits", "analyticsVisits"]);
-      const nextIntent = buildIntentRecord(sessionId, minutes, normalizedName);
+      const nextIntent = buildIntentRecord(sessionId, minutes, normalizedName, {
+        initialIntendedMinutes: minutes,
+        totalExtendedMinutes: 0,
+        startTime: now
+      });
       const filtered = intents.filter((intent) => intent.sessionId !== sessionId);
       const filteredAnalytics = analyticsIntents.filter((intent) => intent.sessionId !== sessionId);
 
@@ -84,7 +104,7 @@
         lastUserActivityAt: now
       });
 
-      chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
+      safeBackgroundSignal({ type: "rebuildSessions" });
       return true;
     }
 
@@ -92,12 +112,24 @@
 
     const filtered = intents.filter((intent) => intent.sessionId !== activeSession.id);
     const filteredAnalytics = analyticsIntents.filter((intent) => intent.sessionId !== activeSession.id);
-    const nextIntent = buildIntentRecord(activeSession.id, minutes, normalizedName);
+    const nextIntent = buildIntentRecord(activeSession.id, minutes, normalizedName, {
+      initialIntendedMinutes:
+        activeSession.initialIntendedMinutes != null
+          ? Number(activeSession.initialIntendedMinutes)
+          : (minutes == null ? null : Number(minutes)),
+      totalExtendedMinutes: Math.max(0, Number(activeSession.totalExtendedMinutes || 0)),
+      startTime: activeSession.startTime
+    });
 
     await chrome.storage.local.set({
       activeSession: {
         ...activeSession,
         intendedMinutes: minutes,
+        initialIntendedMinutes:
+          activeSession.initialIntendedMinutes != null
+            ? Number(activeSession.initialIntendedMinutes)
+            : (minutes == null ? null : Number(minutes)),
+        totalExtendedMinutes: Math.max(0, Number(activeSession.totalExtendedMinutes || 0)),
         sessionName: normalizedName,
         goalSelectionMade: true,
         autoIntentPrompted: false
@@ -107,6 +139,22 @@
           ? {
               ...analyticsActiveSession,
               intendedMinutes: minutes,
+              initialIntendedMinutes:
+                analyticsActiveSession.initialIntendedMinutes != null
+                  ? Number(analyticsActiveSession.initialIntendedMinutes)
+                  : (
+                      activeSession.initialIntendedMinutes != null
+                        ? Number(activeSession.initialIntendedMinutes)
+                        : (minutes == null ? null : Number(minutes))
+                    ),
+              totalExtendedMinutes: Math.max(
+                0,
+                Number(
+                  analyticsActiveSession.totalExtendedMinutes ??
+                  activeSession.totalExtendedMinutes ??
+                  0
+                )
+              ),
               sessionName: normalizedName,
               goalSelectionMade: true,
               autoIntentPrompted: false
@@ -118,7 +166,7 @@
       analyticsSessionIntents: nextIntent ? [...filteredAnalytics, nextIntent] : filteredAnalytics
     });
 
-    chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
+    safeBackgroundSignal({ type: "rebuildSessions" });
     return true;
   }
 
@@ -129,6 +177,8 @@
       id: `${now}`,
       createdAt: now,
       intendedMinutes: minutes,
+      initialIntendedMinutes: minutes == null ? null : Number(minutes),
+      totalExtendedMinutes: 0,
       sessionName: normalizedName,
       goalSelectionMade: true
     };
@@ -145,7 +195,11 @@
     const analyticsIntents = Array.isArray(analyticsSessionIntents) ? analyticsSessionIntents.slice() : [];
     const filtered = intents.filter((intent) => intent.sessionId !== pendingManualSession.id);
     const filteredAnalytics = analyticsIntents.filter((intent) => intent.sessionId !== pendingManualSession.id);
-    const nextIntent = buildIntentRecord(pendingManualSession.id, minutes, normalizedName);
+    const nextIntent = buildIntentRecord(pendingManualSession.id, minutes, normalizedName, {
+      initialIntendedMinutes: minutes,
+      totalExtendedMinutes: 0,
+      startTime: now
+    });
 
     await chrome.storage.local.set({
       activeSession: null,
@@ -157,7 +211,7 @@
       analyticsSessionIntents: nextIntent ? [...filteredAnalytics, nextIntent] : filteredAnalytics
     });
 
-    chrome.runtime.sendMessage({ type: "rebuildSessions" }, () => {});
+    safeBackgroundSignal({ type: "rebuildSessions" });
     return pendingManualSession;
   }
 

@@ -227,6 +227,151 @@ body {
   gap: 16px;
 }
 
+.analyticsInsightsStrip {
+  width: min(100%, 1040px);
+  margin: 0 auto;
+  padding: 10px 12px 12px;
+}
+
+.analyticsInsightsStripHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.overviewInsightsMount { display: block; }
+
+.overviewInsightCards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.overviewInsightCard {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-height: 148px;
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(125, 52, 216, 0.12);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbf9ff 100%);
+  box-shadow: 0 8px 20px rgba(125, 52, 216, 0.06);
+}
+
+.overviewInsightCard--bad {
+  border-color: rgba(239, 68, 68, 0.18);
+  background: linear-gradient(180deg, #fffefe 0%, #fff7f7 100%);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.07);
+}
+
+.overviewInsightCard--neutral {
+  border-color: rgba(245, 158, 11, 0.18);
+  background: linear-gradient(180deg, #fffefd 0%, #fffaf2 100%);
+  box-shadow: 0 8px 20px rgba(245, 158, 11, 0.07);
+}
+
+.overviewInsightCard--good {
+  border-color: rgba(34, 197, 94, 0.18);
+  background: linear-gradient(180deg, #fcfffd 0%, #f3fff7 100%);
+  box-shadow: 0 8px 20px rgba(34, 197, 94, 0.07);
+}
+
+.overviewInsightEyebrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-height: 32px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f3ecff 0%, #ede4ff 100%);
+  color: var(--purple);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: 0 8px 18px rgba(139, 92, 246, 0.1);
+}
+
+.overviewInsightEyebrow--bad {
+  background: linear-gradient(180deg, #feecec 0%, #fde3e3 100%);
+  color: #b91c1c;
+  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.12);
+}
+
+.overviewInsightEyebrow--neutral {
+  background: linear-gradient(180deg, #fff5df 0%, #ffefcf 100%);
+  color: #b45309;
+  box-shadow: 0 8px 18px rgba(245, 158, 11, 0.12);
+}
+
+.overviewInsightEyebrow--good {
+  background: linear-gradient(180deg, #e9faef 0%, #ddf7e7 100%);
+  color: #15803d;
+  box-shadow: 0 8px 18px rgba(34, 197, 94, 0.12);
+}
+
+.overviewInsightBody {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.overviewInsightTitle {
+  margin: 0;
+  color: #202637;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+.overviewInsightSummary {
+  margin: 0;
+  color: #4f596d;
+  font-size: 11px;
+  line-height: 1.5;
+  max-width: none;
+}
+
+.overviewInsightMeta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 0;
+}
+
+.overviewInsightAction {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--purple);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.overviewInsightAction:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 980px) {
+  .overviewInsightCards {
+    grid-template-columns: 1fr;
+  }
+
+  .overviewInsightCard {
+    min-height: 0;
+  }
+}
+
 .analyticsInsightsGrid {
   display: grid;
   gap: 16px;
@@ -435,9 +580,13 @@ body {
 }
 
 .progressWrap {
-  width: 160px;
-  height: 160px;
+  width: 180px;
+  min-height: 190px;
   margin: 0 auto;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 8px;
 }
 
 .sessionInfo {
@@ -445,6 +594,14 @@ body {
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 14px;
   min-height: 0;
+}
+
+.progressGoalCaption {
+  max-width: 180px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted);
 }
 
 .sessionMetrics {
@@ -842,6 +999,11 @@ body {
   white-space: nowrap;
 }
 
+.goalBadgeSecondary {
+  background: #f5f3ff;
+  color: #7d34d8;
+}
+
 .overrunBadge {
   padding: 5px 9px;
   border-radius: 999px;
@@ -915,6 +1077,22 @@ body {
   white-space: nowrap;
 }
 
+.sessionReflectionNote {
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  border-radius: 12px;
+  background: #faf6ff;
+  border: 1px solid rgba(125, 52, 216, 0.12);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.sessionReflectionNote strong {
+  color: var(--purple);
+  margin-right: 4px;
+}
+
 .siteRow {
   gap: 14px;
 }
@@ -955,6 +1133,7 @@ body {
   overflow: hidden;
   width: min(100%, 1040px);
   margin: 0 auto;
+  min-height: 560px;
 }
 
 .assistantAvatar {
@@ -973,9 +1152,9 @@ body {
 .assistantPlaceholder {
   display: grid;
   gap: 16px;
-  padding: 2px 0 2px;
-  min-height: 320px;
-  width: min(100%, 920px);
+  padding: 4px 0 6px;
+  min-height: 460px;
+  width: min(100%, 980px);
   margin: 0 auto;
 }
 
@@ -989,35 +1168,37 @@ body {
   color: #b91c1c;
 }
 
-.assistantSuggestionRow {
+.assistantStarterPrompts {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.assistantSuggestionChip {
-  border: 1px solid var(--border);
-  background: white;
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 700;
+.assistantStarterPrompt {
+  border: 1px solid #ddd6fe;
+  background: #f5f3ff;
   color: var(--purple);
+  border-radius: 999px;
+  padding: 9px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
 }
 
-.assistantSuggestionChip:hover {
-  border-color: rgba(125, 52, 216, 0.35);
-  box-shadow: var(--shadow-soft);
+.assistantStarterPrompt:hover {
   transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+  background: #efe8ff;
 }
 
 .assistantThread {
   display: grid;
   gap: 12px;
-  min-height: 160px;
-  max-height: 420px;
+  min-height: 260px;
+  max-height: 520px;
   overflow-y: auto;
   padding-right: 6px;
   scroll-behavior: smooth;
@@ -1072,6 +1253,62 @@ body {
   white-space: normal;
 }
 
+.assistantBubble.bot p {
+  margin: 0;
+}
+
+.assistantBubble.bot p + p {
+  margin-top: 8px;
+}
+
+.assistantHeading {
+  margin-top: 10px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6d28d9;
+}
+
+.assistantHeading:first-child {
+  margin-top: 0;
+}
+
+.assistantLabelLine {
+  line-height: 1.6;
+}
+
+.assistantLabel {
+  font-weight: 800;
+  color: #3b3560;
+}
+
+.assistantList {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.assistantHeading + .assistantList,
+.assistantHeading + p {
+  margin-top: 0;
+}
+
+.assistantListOrdered {
+  padding-left: 20px;
+}
+
+.assistantList li {
+  line-height: 1.55;
+  color: #34384a;
+}
+
+.assistantThread > .assistantMessage:first-child {
+  margin-top: 2px;
+}
+
 .assistantBubble.user {
   background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
   color: white;
@@ -1093,8 +1330,9 @@ body {
 
 .assistantComposerInput {
   flex: 1;
-  min-height: 72px;
-  resize: vertical;
+  min-height: 44px;
+  resize: none;
+  overflow-y: hidden;
   border: 0;
   outline: none;
   font: inherit;
@@ -1115,31 +1353,6 @@ body {
 .assistantComposerBtn[disabled] {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.assistantFollowUps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.assistantFollowUpChip {
-  border: 1px solid rgba(125, 52, 216, 0.18);
-  background: #f8f4ff;
-  color: var(--purple);
-  border-radius: 999px;
-  padding: 7px 11px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-}
-
-.assistantFollowUpChip:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-soft);
-  border-color: rgba(125, 52, 216, 0.3);
 }
 
 .footprintConceptCard {
@@ -2075,6 +2288,10 @@ body {
 }
 
 @media (min-width: 980px) {
+  .overviewInsightCards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .analyticsInsightsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
@@ -2182,6 +2399,30 @@ body {
   .footprintCharts,
   .footprintInsights {
     grid-template-columns: 1fr;
+  }
+
+  .overviewInsightCards {
+    grid-template-columns: 1fr;
+  }
+
+  .overviewInsightCard {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .overviewInsightEyebrow {
+    width: fit-content;
+    min-height: 0;
+    padding: 7px 12px;
+    font-size: 11px;
+  }
+
+  .overviewInsightBody {
+    padding-top: 0;
+  }
+
+  .overviewInsightTitle {
+    font-size: 14px;
   }
 
   .historyStat {

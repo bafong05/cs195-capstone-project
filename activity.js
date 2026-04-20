@@ -13,7 +13,9 @@ function persistActivity(now, source) {
       type: "userActivity",
       ts: now,
       source
-    }, () => {});
+    }, () => {
+      void chrome.runtime.lastError;
+    });
   } catch {}
 }
 

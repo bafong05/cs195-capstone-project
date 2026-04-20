@@ -118,6 +118,18 @@
 
         <section class="tabPanel" data-tab-panel="analytics" hidden>
           <section class="singlePanelGrid">
+            <article class="panelCard analyticsInsightsStrip">
+              <div class="analyticsInsightsStripHeader">
+                <div>
+                  <div class="label">AI insights</div>
+                  <div class="panelHint">Quick personalized highlights from your recent browsing patterns</div>
+                </div>
+              </div>
+              <div id="overviewInsights" class="overviewInsightsMount">
+                <div class="muted">Loading personalized insights...</div>
+              </div>
+            </article>
+
             <article class="panelCard analyticsAssistantCard">
               <div class="panelHeader">
                 <div>
@@ -127,11 +139,7 @@
               </div>
               <div class="assistantPlaceholder">
                 <div id="assistantStatus" class="assistantStatus" aria-live="polite"></div>
-                <div class="assistantSuggestionRow" id="assistantSuggestions">
-                  <button class="assistantSuggestionChip" type="button" data-assistant-prompt="How much time have I spent today?">Time today</button>
-                  <button class="assistantSuggestionChip" type="button" data-assistant-prompt="What sites do I switch between the most?">Switching patterns</button>
-                  <button class="assistantSuggestionChip" type="button" data-assistant-prompt="Give me productivity insights from my sessions.">Productivity insights</button>
-                </div>
+                <div id="assistantStarterPrompts" class="assistantStarterPrompts"></div>
                 <div id="assistantThread" class="assistantThread">
                   <div class="assistantMessage assistantMessageBot">
                     <div class="assistantAvatar">AI</div>

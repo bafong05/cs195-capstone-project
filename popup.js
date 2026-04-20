@@ -10,6 +10,19 @@ const saveIntentToActiveSession = sessionHelpers?.saveIntentToActiveSession || n
 const startManualSession = sessionHelpers?.startManualSession || null;
 let popupFailed = false;
 let refreshTimerId = null;
+const RISK_SAMPLE_MIN = 3;
+
+async function safeRuntimeMessage(message) {
+  try {
+    return await chrome.runtime.sendMessage(message);
+  } catch (error) {
+    const text = String(error?.message || error || "");
+    if (text.includes("No SW") || text.includes("Receiving end does not exist")) {
+      return null;
+    }
+    throw error;
+  }
+}
 
 function showPopupError(message) {
   popupFailed = true;
@@ -69,6 +82,236 @@ function fmtElapsed(ms) {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function isDisplayDomain(domain) {
+  const value = String(domain || "").trim().toLowerCase();
+  if (!value || value === "unknown") return false;
+  if (
+    value === "extensions" ||
+    value === "new-tab-page" ||
+    value === "chrome" ||
+    value.startsWith("chrome:") ||
+    value.startsWith("chrome-extension:") ||
+    value.startsWith("devtools:") ||
+    value.startsWith("about:")
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function getSessionPrimaryDomain(session) {
+  const entries = Object.entries(session?.metrics?.timePerDomain || {})
+    .filter(([domain, ms]) => isDisplayDomain(domain) && Number(ms || 0) > 0)
+    .sort((a, b) => b[1] - a[1]);
+
+  if (entries[0]?.[0]) return entries[0][0];
+
+  for (const visit of session?.visits || []) {
+    if (isDisplayDomain(visit?.domain)) return visit.domain;
+  }
+
+  return "";
+}
+
+function getCurrentPrimaryDomain(activeSession, sessions) {
+  const activeId = String(activeSession?.id || "");
+  const matchingSession = (sessions || []).find((session) => {
+    const visitSessionId = String(session?.visits?.[0]?.sessionId || session?.id || "");
+    return activeId && visitSessionId === activeId;
+  });
+
+  if (matchingSession) return getSessionPrimaryDomain(matchingSession);
+  const uniqueDomains = Array.isArray(activeSession?.uniqueDomains) ? activeSession.uniqueDomains : [];
+  return uniqueDomains.find(isDisplayDomain) || "";
+}
+
+function bucketGoalMinutes(minutes) {
+  const value = Number(minutes);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value < 10) return "<10";
+  if (value <= 15) return "10-15";
+  if (value <= 30) return "16-30";
+  if (value <= 60) return "31-60";
+  return "60+";
+}
+
+function buildRiskCardCopy(activeSession, sessions) {
+  if (!activeSession || activeSession?.intendedMinutes == null) {
+    return null;
+  }
+
+  const meaningfulSessions = (sessions || []).filter((session) => {
+    const metrics = session?.metrics || {};
+    return Number(metrics?.intendedMinutes) > 0 && Number(metrics?.durationMs) > 0;
+  });
+
+  if (!meaningfulSessions.length) return null;
+
+  const currentStart = Number(activeSession.startTime || Date.now());
+  const currentHour = new Date(currentStart).getHours();
+  const currentGoalMinutes = Number(activeSession.intendedMinutes || 0);
+  const currentGoalBucket = bucketGoalMinutes(currentGoalMinutes);
+  const currentPrimaryDomain = getCurrentPrimaryDomain(activeSession, meaningfulSessions);
+
+  const computeRate = (list) => {
+    const sample = list.length;
+    if (!sample) return null;
+    const overruns = list.filter((session) => Number(session?.metrics?.overrunMs || 0) > 0).length;
+    return {
+      sample,
+      rate: overruns / sample
+    };
+  };
+
+  const overall = computeRate(meaningfulSessions);
+  if (!overall) return null;
+
+  const eveningSessions = meaningfulSessions.filter((session) => {
+    const start = Number(session?.metrics?.start || 0);
+    return new Date(start).getHours() >= 21;
+  });
+  const hourWindowSessions = meaningfulSessions.filter((session) => {
+    const start = Number(session?.metrics?.start || 0);
+    const hour = new Date(start).getHours();
+    return Math.abs(hour - currentHour) <= 1;
+  });
+  const goalBucketSessions = meaningfulSessions.filter((session) => {
+    return bucketGoalMinutes(session?.metrics?.intendedMinutes) === currentGoalBucket;
+  });
+  const domainSessions = currentPrimaryDomain
+    ? meaningfulSessions.filter((session) => getSessionPrimaryDomain(session) === currentPrimaryDomain)
+    : [];
+
+  const candidates = [];
+
+  const addCandidate = (key, stats, reasonBuilder, weight = 1) => {
+    if (!stats || stats.sample < RISK_SAMPLE_MIN) return;
+    const lift = stats.rate - overall.rate;
+    candidates.push({
+      key,
+      sample: stats.sample,
+      rate: stats.rate,
+      lift,
+      score: stats.rate + Math.max(0, lift) + weight * 0.02,
+      reasonBuilder
+    });
+  };
+
+  addCandidate(
+    "late",
+    currentHour >= 21 ? computeRate(eveningSessions) : null,
+    (stats) => `Your sessions after 9pm exceed your intended time ${Math.round(stats.rate * 100)}% of the time.`
+  );
+  addCandidate(
+    "hour-window",
+    computeRate(hourWindowSessions),
+    (stats) => `Sessions that start around ${formatHourWindow(currentHour)} run over ${Math.round(stats.rate * 100)}% of the time for you.`
+  );
+  addCandidate(
+    "goal-bucket",
+    currentGoalBucket ? computeRate(goalBucketSessions) : null,
+    (stats) => {
+      if (currentGoalBucket === "<10") {
+        return `Short intended sessions under 10 minutes run over ${Math.round(stats.rate * 100)}% of the time.`;
+      }
+      return `${formatGoalBucket(currentGoalBucket)} sessions run over ${Math.round(stats.rate * 100)}% of the time for you.`;
+    },
+    1.5
+  );
+  addCandidate(
+    "domain",
+    currentPrimaryDomain ? computeRate(domainSessions) : null,
+    (stats) => `${formatDomainLabel(currentPrimaryDomain)} sessions run over ${Math.round(stats.rate * 100)}% of the time for you.`,
+    1.25
+  );
+
+  const best = candidates.sort((a, b) => b.score - a.score || b.sample - a.sample)[0];
+  const activeElapsedMs = Math.max(0, Date.now() - currentStart);
+  const progressRatio = currentGoalMinutes > 0 ? activeElapsedMs / (currentGoalMinutes * 60 * 1000) : 0;
+
+  let level = "low";
+  let title = "Low overrun risk right now";
+  let reason = `Sessions like this usually stay close to plan for you.`;
+
+  if (best) {
+    const highRisk = best.rate >= 0.65 || (best.lift >= 0.2 && best.sample >= 4);
+    const mediumRisk = best.rate >= 0.45 || best.lift >= 0.1;
+
+    if (highRisk) {
+      level = "high";
+      title = progressRatio >= 0.5 ? "This session is likely to run over" : "High overrun risk";
+    } else if (mediumRisk) {
+      level = "medium";
+      title = progressRatio >= 0.5 ? "This session could drift long" : "Moderate overrun risk";
+    }
+
+    reason = best.reasonBuilder(best);
+  } else if (overall.rate >= 0.55) {
+    level = "medium";
+    title = "This session could drift long";
+    reason = `About ${Math.round(overall.rate * 100)}% of your goal-based sessions run over.`;
+  }
+
+  return { level, title, reason };
+}
+
+function formatGoalBucket(bucket) {
+  switch (bucket) {
+    case "<10":
+      return "Short";
+    case "10-15":
+      return "10–15 minute";
+    case "16-30":
+      return "16–30 minute";
+    case "31-60":
+      return "31–60 minute";
+    case "60+":
+      return "Long";
+    default:
+      return "Similar";
+  }
+}
+
+function formatHourWindow(hour) {
+  const start = ((hour % 24) + 24) % 24;
+  const end = (start + 1) % 24;
+  return `${formatHourLabel(start)}–${formatHourLabel(end)}`;
+}
+
+function formatHourLabel(hour) {
+  const normalized = ((hour % 24) + 24) % 24;
+  const suffix = normalized >= 12 ? "pm" : "am";
+  const twelveHour = normalized % 12 || 12;
+  return `${twelveHour}${suffix}`;
+}
+
+function formatDomainLabel(domain) {
+  const normalized = String(domain || "").replace(/^www\./, "");
+  if (normalized === "docs.google.com") return "Google Docs";
+  if (normalized === "chatgpt.com") return "ChatGPT";
+  return normalized;
+}
+
+function renderPopupRisk(activeSession, sessions) {
+  const card = document.getElementById("popupRiskCard");
+  const levelNode = document.getElementById("popupRiskLevel");
+  const titleNode = document.getElementById("popupRiskTitle");
+  const reasonNode = document.getElementById("popupRiskReason");
+  if (!card || !levelNode || !titleNode || !reasonNode) return;
+
+  const risk = buildRiskCardCopy(activeSession, sessions);
+  if (!risk) {
+    card.hidden = true;
+    return;
+  }
+
+  levelNode.textContent = risk.level.charAt(0).toUpperCase() + risk.level.slice(1);
+  levelNode.className = `popupRiskLevel level-${risk.level}`;
+  titleNode.textContent = risk.title;
+  reasonNode.textContent = risk.reason;
+  card.hidden = false;
 }
 
 function buildProgressSvg(valueLabel, goalLabel, ratio, hasGoal = true) {
@@ -150,7 +393,10 @@ async function submitIntent(minutes) {
 
 async function stopSession() {
   if (popupFailed) return;
-  await chrome.runtime.sendMessage({ type: "stopCurrentSession" });
+  const response = await safeRuntimeMessage({ type: "stopCurrentSession" });
+  if (!response?.ok && !response?.stopped) {
+    throw new Error("The extension lost connection.");
+  }
   hideChooser();
   await refresh();
 }
@@ -158,11 +404,12 @@ async function stopSession() {
 async function refresh() {
   if (popupFailed) return;
   await loadInactivityThreshold();
-  const { activeSession } = await chrome.storage.local.get(["activeSession"]);
+  const { activeSession, sessions = [] } = await chrome.storage.local.get(["activeSession", "sessions"]);
   const progressChart = document.getElementById("popupProgressChart");
 
   if (!activeSession) {
     progressChart.innerHTML = buildProgressSvg("0:00", "free", 0);
+    renderPopupRisk(null, []);
     if (chooserMode !== "manual") {
       hideChooser();
     }
@@ -181,6 +428,7 @@ async function refresh() {
     ratio,
     goalMinutes != null
   );
+  renderPopupRisk(activeSession, Array.isArray(sessions) ? sessions : []);
 
   if (activeSession.intendedMinutes != null && chooserMode !== "manual") {
     hideChooser();
