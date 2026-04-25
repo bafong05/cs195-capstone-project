@@ -8,10 +8,7 @@ While the Chrome Web Store review is still pending, you can test the extension l
 
 ### Download the project
 
-Either:
-
-- clone the repo with Git
-- or download the repo as a ZIP from GitHub and unzip it
+Download the repo as a ZIP from GitHub
 
 ### Load it into Chrome
 
