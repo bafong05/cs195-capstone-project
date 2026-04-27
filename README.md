@@ -8,14 +8,15 @@ While the Chrome Web Store review is still pending, you can test the extension l
 
 ### Download the project
 
-[Click here to download](https://github.com/bafong05/screentime-momentum/blob/main/screentime-momentum-main.zip)
+[Click here to download](./screen-time-momentum-test.zip)
 
 ### Load it into Chrome
 
-1. Open `chrome://extensions`
-2. Turn on `Developer mode`
-3. Click `Load unpacked`
-4. Select the project folder
+1. Unzip the file
+2. Open `chrome://extensions`
+3. Turn on `Developer mode`
+4. Click `Load unpacked`
+5. Select the unzipped folder
 
 After that, the extension should appear in Chrome and can be pinned from the extensions menu.
 
