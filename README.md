@@ -8,7 +8,7 @@ While the Chrome Web Store review is still pending, you can test the extension l
 
 ### Download the project
 
-Download the repo as a ZIP from GitHub and unzip it
+[Click here to download](https://github.com/bafong05/screentime-momentum/blob/main/screentime-momentum-main.zip)
 
 ### Load it into Chrome
 
