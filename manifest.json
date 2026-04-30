@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Screen Time Momentum",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Turn browsing activity into sessions, goals, and insights about your time online.",
   "permissions": [
     "tabs",

@@ -151,6 +151,19 @@ function getLatestSessionEndReflection(sessionId, sessionStart = 0) {
     .sort((a, b) => Number(b?.timestamp || 0) - Number(a?.timestamp || 0))[0] || null;
 }
 
+function isMeaningfulOverrunReflection(entry) {
+  if (!entry) return false;
+  const action = String(entry.action || "").trim().toLowerCase();
+  if (!["extend", "no-goal", "end"].includes(action)) return false;
+  const text = String(entry.reflection || "").trim().toLowerCase();
+  if (!text) return false;
+  return ![
+    "ended due to inactivity",
+    "ended manually",
+    "ended when browser closed or restarted"
+  ].includes(text);
+}
+
 function buildSingleReflectionHtml(reflection) {
   if (!reflection?.reflection) return "";
 
@@ -2939,6 +2952,7 @@ function buildAssistantContext(liveSessions, analyticsSessions, today) {
     .slice()
     .sort((a, b) => Number(b?.timestamp || 0) - Number(a?.timestamp || 0))
     .slice(0, 25)
+    .filter((entry) => isMeaningfulOverrunReflection(entry))
     .map((entry) => ({
       sessionId: String(entry?.sessionId || ""),
       action: entry?.action || "",

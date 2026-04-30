@@ -53,6 +53,11 @@ INTERNAL_DOMAIN_TERMS = {
 
 AI_RESPONSE_CACHE_TTL_SECONDS = 45
 AI_RESPONSE_CACHE: dict[str, tuple[float, str]] = {}
+NON_USER_REFLECTION_TEXTS = {
+    "ended due to inactivity",
+    "ended manually",
+    "ended when browser closed or restarted",
+}
 
 
 def json_safe(obj: Any) -> Any:
@@ -182,6 +187,7 @@ def build_domain_aliases(domain: str) -> set[str]:
         if len(labels[0]) >= 3 and len(labels[1]) >= 3:
             aliases.add(f"{labels[0]} {labels[1]}")
             aliases.add(f"{labels[1]} {labels[0]}")
+            aliases.add(f"{labels[0]}.{labels[1]}")
     if len(labels) >= 3 and labels[-2:] == ["google", "com"]:
         aliases.add(f"google {labels[0]}")
         aliases.add(f"{labels[0]} google")
@@ -1016,6 +1022,8 @@ def answer_anchor_flow(question: str, context: dict[str, Any]) -> str | None:
 
 def answer_time_of_day(question: str, context: dict[str, Any]) -> str | None:
     q = question.lower()
+    if "start" in q and "session" in q:
+        return None
     if not any(phrase in q for phrase in ["time of day", "most active hour", "peak hour", "active hour"]):
         return None
     hourly = (context.get("todaySummary") or {}).get("hourlyMinutes") or []
@@ -1033,6 +1041,54 @@ def answer_time_of_day(question: str, context: dict[str, Any]) -> str | None:
     ]
     return format_answer(
         f"Your most active hour today is {top_hour % 12 or 12}{'AM' if top_hour < 12 else 'PM'}.",
+        bullets,
+    )
+
+
+def answer_session_start_time(question: str, context: dict[str, Any]) -> str | None:
+    q = question.lower()
+    if not (
+        ("start" in q and "session" in q)
+        or "when do i usually start" in q
+        or "what time do i usually start" in q
+        or "what time of day do i usually start" in q
+        or "when do i start browsing" in q
+    ):
+        return None
+
+    sessions = get_meaningful_history_sessions(context)
+    if len(sessions) < 2:
+        return "I don’t have enough session history yet to identify when you usually start."
+
+    counts: Counter[int] = Counter()
+    for session in sessions:
+        started = session_started_at(session)
+        if started is None:
+            continue
+        counts[started.hour] += 1
+
+    if not counts:
+        return "I don’t have enough session history yet to identify when you usually start."
+
+    best_start = 0
+    best_count = -1
+    for hour in range(24):
+        total = counts[hour] + counts[(hour + 1) % 24]
+        if total > best_count:
+            best_start = hour
+            best_count = total
+
+    label = hour_window_label(best_start, best_start + 2)
+    ranked_windows: list[tuple[str, int]] = []
+    for hour in range(24):
+        total = counts[hour] + counts[(hour + 1) % 24]
+        if total > 0:
+            ranked_windows.append((hour_window_label(hour, hour + 2), total))
+    ranked_windows.sort(key=lambda item: item[1], reverse=True)
+
+    bullets = [f"{window}: {count} session starts" for window, count in ranked_windows[:3]]
+    return format_answer(
+        f"You usually start your sessions around {label}.",
         bullets,
     )
 
@@ -1171,6 +1227,21 @@ def session_latest_reflection(session: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(reflection, dict) and str(reflection.get("reflection") or "").strip():
         return reflection
     return None
+
+
+def is_meaningful_overrun_reflection(reflection: dict[str, Any] | None) -> bool:
+    if not isinstance(reflection, dict):
+        return False
+
+    action = str(reflection.get("action") or "").strip().lower()
+    if action not in {"extend", "no-goal", "end"}:
+        return False
+
+    text = str(reflection.get("reflection") or "").strip()
+    if not text:
+        return False
+
+    return text.lower() not in NON_USER_REFLECTION_TEXTS
 
 
 def is_overrun_session(session: dict[str, Any]) -> bool:
@@ -1474,7 +1545,7 @@ def build_overview_reflection_pattern_insight(context: dict[str, Any]) -> dict[s
     reflections: list[str] = []
     for session in sessions:
         reflection = session_latest_reflection(session)
-        if not reflection:
+        if not is_meaningful_overrun_reflection(reflection):
             continue
         text = str(reflection.get("reflection") or "").strip()
         if text:
@@ -1565,6 +1636,7 @@ def direct_answer(question: str, context: dict[str, Any]) -> str | None:
         or answer_top_sites(question, context)
         or answer_anchor_flow(question, context)
         or answer_switching_pattern_exact(question, context)
+        or answer_session_start_time(question, context)
         or answer_time_of_day(question, context)
         or answer_session_breakdown(question, context)
         or answer_productivity(question, context)
